@@ -34,6 +34,7 @@ html, body { margin: 0; height: 100%; background: #0c0b09; overflow: hidden; col
 .tbtn:hover { filter: brightness(1.25); }
 .tbtn.on { background: linear-gradient(#8a6a20, #5a4410); color: #fff; }
 .tbtn:disabled { opacity: 0.4; cursor: default; }
+.tbtn.armed { background: linear-gradient(#a03a1a, #6a1a0a); color: #fff; border-color: #ffb070; }
 .tbtn.send { background: linear-gradient(#7a2a1a, #4a140a); padding: 5px 14px; font-size: 14px; }
 
 /* ---------- stage ---------- */

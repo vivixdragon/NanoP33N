@@ -19,10 +19,11 @@ function rrect(c, x, y, w, h, r) {
 function circle(c, x, y, r) { c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); }
 
 // ---------- Terrain ----------
-function buildBackground(cols, rows, T, grid, obstacles, rng) {
+function buildBackground(cols, rows, T, grid, obstacles, rng, k = 1) {
   const bg = document.createElement('canvas');
-  bg.width = cols * T; bg.height = rows * T;
+  bg.width = Math.round(cols * T * k); bg.height = Math.round(rows * T * k);
   const c = bg.getContext('2d');
+  c.scale(k, k);
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
       const v = Math.floor(rng() * 14) - 7;
@@ -38,8 +39,21 @@ function buildBackground(cols, rows, T, grid, obstacles, rng) {
     g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)');
     c.fillStyle = g; c.fillRect(x - r, y - r, r * 2, r * 2);
   }
+  // dirt patches and moss
+  for (let i = 0; i < 26; i++) {
+    const x = rng() * cols * T, y = rng() * rows * T, r = 14 + rng() * 26;
+    const g = c.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, 'rgba(110,86,52,0.35)'); g.addColorStop(0.7, 'rgba(90,70,40,0.15)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = g; c.beginPath(); c.ellipse(x, y, r, r * 0.7, rng() * 3, 0, Math.PI * 2); c.fill();
+  }
+  // pebbles
+  for (let i = 0; i < 140; i++) {
+    const x = rng() * cols * T, y = rng() * rows * T, r = 1 + rng() * 2.2;
+    c.fillStyle = 'rgba(0,0,0,0.25)'; c.beginPath(); c.ellipse(x + 0.8, y + 0.8, r, r * 0.7, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = rng() < 0.5 ? '#8a857a' : '#6e6a60'; c.beginPath(); c.ellipse(x, y, r, r * 0.7, 0, 0, Math.PI * 2); c.fill();
+  }
   // grass tufts & flowers
-  for (let i = 0; i < 900; i++) {
+  for (let i = 0; i < 1800; i++) {
     const x = rng() * cols * T, y = rng() * rows * T;
     c.strokeStyle = rng() < 0.5 ? 'rgba(120,160,70,0.5)' : 'rgba(40,70,25,0.6)';
     c.lineWidth = 1;
@@ -52,6 +66,10 @@ function buildBackground(cols, rows, T, grid, obstacles, rng) {
   }
   // dirt road hints near spawn and exit
   for (const o of obstacles) drawObstacle(c, o, T);
+  // warm key light from the top-left
+  const lg = c.createLinearGradient(0, 0, cols * T, rows * T);
+  lg.addColorStop(0, 'rgba(255,220,150,0.10)'); lg.addColorStop(0.5, 'rgba(255,220,150,0)'); lg.addColorStop(1, 'rgba(20,30,60,0.14)');
+  c.fillStyle = lg; c.fillRect(0, 0, cols * T, rows * T);
   // vignette
   const vg = c.createRadialGradient(cols * T / 2, rows * T / 2, rows * T * 0.4, cols * T / 2, rows * T / 2, cols * T * 0.62);
   vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.38)');
@@ -259,7 +277,8 @@ function drawCreep(c, cr, time) {
   const { x, y, r } = cr;
   const wob = Math.sin(time * 10 + cr.wobble * 10);
   const fly = cr.flying;
-  const yy = fly ? y - 10 + Math.sin(time * 4 + cr.wobble * 5) * 2 : y;
+  const yy = fly ? y - 10 + Math.sin(time * 4 + cr.wobble * 5) * 2
+    : y - (cr.stunT > 0 ? 0 : Math.abs(Math.sin(time * (cr.boss ? 5 : 11) + cr.wobble * 20)) * (cr.boss ? 2.5 : 1.6));
   // shadow
   c.fillStyle = 'rgba(0,0,0,0.35)';
   c.beginPath(); c.ellipse(x + 2, y + r * 0.6 + (fly ? 6 : 0), r * (fly ? 0.7 : 1), r * 0.4, 0, 0, Math.PI * 2); c.fill();
@@ -411,6 +430,19 @@ function drawGate(c, x, y, T, time, hurt) {
   c.fillStyle = hurt > 0 ? `rgba(255,40,40,${hurt})` : '#1e4aa8';
   c.fillRect(x - T * 0.12, y - T * 0.7, T * 0.24, T * 0.32);
   c.fillStyle = '#ffd34a'; circle(c, x, y - T * 0.54, 3); c.fill();
+  // flickering torches either side of the gate
+  for (const side of [-1, 1]) {
+    const tx = x + side * T * 0.62, ty = y + T * 0.25;
+    c.fillStyle = '#3a2a1a'; c.fillRect(tx - 1.5, ty, 3, 10);
+    const f = 0.8 + 0.2 * Math.sin(time * 17 + side * 3) + 0.1 * Math.sin(time * 41 + side);
+    c.save(); c.globalCompositeOperation = 'lighter';
+    const g = c.createRadialGradient(tx, ty - 2, 0, tx, ty - 2, 34 * f);
+    g.addColorStop(0, 'rgba(255,170,60,0.55)'); g.addColorStop(1, 'rgba(255,120,20,0)');
+    c.fillStyle = g; circle(c, tx, ty - 2, 34 * f); c.fill();
+    c.fillStyle = 'rgba(255,220,120,0.95)';
+    c.beginPath(); c.moveTo(tx - 3, ty); c.quadraticCurveTo(tx, ty - 12 * f, tx + 3, ty); c.fill();
+    c.restore();
+  }
 }
 
 function lightningPath(x1, y1, x2, y2, segs = 7) {
@@ -423,4 +455,72 @@ function lightningPath(x1, y1, x2, y2, segs = 7) {
   }
   pts.push([x2, y2]);
   return pts;
+}
+
+// ---------- Worn dirt road along the creeps' current route ----------
+function buildRoad(pts, T, w, h, k) {
+  const cvs = document.createElement('canvas');
+  cvs.width = Math.round(w * k); cvs.height = Math.round(h * k);
+  const c = cvs.getContext('2d');
+  c.scale(k, k);
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  const trace = () => { c.beginPath(); c.moveTo(pts[0][0] * T, pts[0][1] * T); for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0] * T, pts[i][1] * T); };
+  trace();
+  c.shadowColor = 'rgba(40,28,12,0.7)'; c.shadowBlur = 10 * k;
+  c.strokeStyle = 'rgba(86,64,38,0.62)'; c.lineWidth = T * 0.74; c.stroke();
+  c.shadowBlur = 0;
+  trace(); c.strokeStyle = 'rgba(128,100,64,0.5)'; c.lineWidth = T * 0.48; c.stroke();
+  trace(); c.strokeStyle = 'rgba(150,120,80,0.25)'; c.lineWidth = T * 0.18; c.stroke();
+  // grit and wheel ruts
+  const r = mulberry32(pts.length * 7919 + 13);
+  for (let i = 1; i < pts.length; i++) {
+    const [x0, y0] = pts[i - 1], [x1, y1] = pts[i];
+    for (let j = 0; j < 7; j++) {
+      const t = r(), ox = (r() - 0.5) * 0.6, oy = (r() - 0.5) * 0.6;
+      const x = (x0 + (x1 - x0) * t + ox) * T, y = (y0 + (y1 - y0) * t + oy) * T;
+      c.fillStyle = r() < 0.5 ? 'rgba(60,44,24,0.5)' : 'rgba(170,140,95,0.4)';
+      c.fillRect(x, y, 1 + r() * 2, 1 + r() * 1.5);
+    }
+  }
+  return cvs;
+}
+
+// soft cloud shadow sprite
+let CLOUD = null;
+function cloudSprite() {
+  if (CLOUD) return CLOUD;
+  CLOUD = document.createElement('canvas'); CLOUD.width = 420; CLOUD.height = 260;
+  const c = CLOUD.getContext('2d'), r = mulberry32(99);
+  for (let i = 0; i < 9; i++) {
+    const x = 90 + r() * 240, y = 80 + r() * 100, rad = 50 + r() * 70;
+    const g = c.createRadialGradient(x, y, 0, x, y, rad);
+    g.addColorStop(0, 'rgba(0,0,10,0.5)'); g.addColorStop(1, 'rgba(0,0,10,0)');
+    c.fillStyle = g; c.fillRect(0, 0, 420, 260);
+  }
+  return CLOUD;
+}
+
+function drawDecal(c, d) {
+  const k = d.t / d.life;
+  const a = k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3;
+  const r = mulberry32(Math.floor(d.seed * 131) + 7);
+  c.save();
+  c.globalAlpha = a * (d.kind === 'scorch' ? 0.55 : 0.8);
+  if (d.kind === 'scorch') {
+    const g = c.createRadialGradient(d.x, d.y, 0, d.x, d.y, d.r);
+    g.addColorStop(0, 'rgba(20,14,8,0.9)'); g.addColorStop(0.6, 'rgba(30,20,10,0.5)'); g.addColorStop(1, 'rgba(30,20,10,0)');
+    c.fillStyle = g; c.beginPath(); c.ellipse(d.x, d.y, d.r, d.r * 0.8, 0, 0, Math.PI * 2); c.fill();
+  } else {
+    // splat
+    c.fillStyle = d.color;
+    c.beginPath(); c.ellipse(d.x, d.y + 2, d.r * 0.95, d.r * 0.6, d.ang || 0, 0, Math.PI * 2); c.fill();
+    for (let i = 0; i < 6; i++) {
+      const ang = r() * Math.PI * 2, dist = d.r * (0.8 + r() * 0.9);
+      c.beginPath(); c.arc(d.x + Math.cos(ang) * dist, d.y + Math.sin(ang) * dist * 0.7, 1 + r() * d.r * 0.18, 0, Math.PI * 2); c.fill();
+    }
+    // fallen body silhouette
+    c.globalAlpha = a * 0.55; c.fillStyle = '#1a1410';
+    c.beginPath(); c.ellipse(d.x, d.y, d.r * 0.7, d.r * 0.42, (d.ang || 0) + 0.6, 0, Math.PI * 2); c.fill();
+  }
+  c.restore();
 }

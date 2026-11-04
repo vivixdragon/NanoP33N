@@ -10,6 +10,7 @@ const fmt = n => n >= 10000 ? (n / 1000).toFixed(1) + 'k' : String(Math.floor(n)
 const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 
 let menuBg = null, menuTime = 0;
+let RES = 1; // canvas backing-store pixels per game pixel (crisp on high-DPI screens)
 
 // ---------- layout scaling ----------
 function fit() {
@@ -18,6 +19,13 @@ function fit() {
   wrap.style.transform = `scale(${s})`;
   wrap.style.left = Math.max(0, (window.innerWidth - 1280 * s) / 2) + 'px';
   wrap.style.top = Math.max(0, (window.innerHeight - 868 * s) / 2) + 'px';
+  const res = Math.max(1, Math.min(2.5, Math.round(s * (window.devicePixelRatio || 1) * 4) / 4));
+  if (res !== RES || cv.width !== Math.round(MAP_W * res)) {
+    RES = res;
+    cv.width = Math.round(MAP_W * RES); cv.height = Math.round(MAP_H * RES);
+    menuBg = null;
+    if (G) { G.bg = null; G.road = null; }
+  }
 }
 window.addEventListener('resize', fit);
 
@@ -25,19 +33,27 @@ window.addEventListener('resize', fit);
 const ICONS = {};
 function makeIcons() {
   for (const k of TOWER_ORDER) {
-    const c = document.createElement('canvas'); c.width = 56; c.height = 56;
+    const c = document.createElement('canvas'); c.width = 112; c.height = 112;
     const x = c.getContext('2d');
+    x.scale(2, 2);
     drawTowerBody(x, k, 28, 28, 52, { level: 1, ang: -0.6, time: 1 });
     ICONS[k] = c.toDataURL();
   }
 }
 
 // ---------- drawing ----------
+const easeOutBack = a => 1 + 2.2 * Math.pow(a - 1, 3) + 1.2 * Math.pow(a - 1, 2);
+
 function draw() {
+  ctx.setTransform(RES, 0, 0, RES, 0, 0);
   ctx.save();
   if (!G) { drawMenuBg(); ctx.restore(); return; }
   if (G.shake > 0) ctx.translate((Math.random() - 0.5) * G.shake, (Math.random() - 0.5) * G.shake);
-  ctx.drawImage(G.bg, 0, 0);
+  if (!G.bg) G.bg = buildBackground(COLS, ROWS, T, G.grid, G.obstacles, mulberry32(G.seed ^ 0x1234), RES);
+  ctx.drawImage(G.bg, 0, 0, MAP_W, MAP_H);
+  if (!G.road || G.roadVer !== G.pathVer) { G.road = buildRoad(G.pathPts, T, MAP_W, MAP_H, RES); G.roadVer = G.pathVer; }
+  ctx.drawImage(G.road, 0, 0, MAP_W, MAP_H);
+  for (const d of G.decals) drawDecal(ctx, d);
   const tm = G.time;
 
   // grid in build mode
@@ -50,7 +66,7 @@ function draw() {
   }
 
   // creep path preview
-  drawPathLine(G.pathPts, G.buildType ? 0.55 : 0.22, '#ffe08a', tm);
+  drawPathLine(G.pathPts, G.buildType ? 0.55 : 0.12, '#ffe08a', tm);
 
   drawPortal(ctx, (SPAWN.x + 0.5) * T, (SPAWN.y + 0.5) * T, T, tm);
   drawGate(ctx, (EXIT.x + 0.5) * T, (EXIT.y + 0.5) * T, T, tm, G.gateHurt);
@@ -67,11 +83,27 @@ function draw() {
   for (const t of G.towers) {
     let rx = 0, ry = 0;
     if (t.recoil > 0 && (t.type === 'cannon')) { rx = -Math.cos(t.ang) * t.recoil * 20; ry = -Math.sin(t.ang) * t.recoil * 20; }
+    const age = (tm - t.built) / 0.35;
+    if (age < 1) {
+      const sc = Math.max(0.05, easeOutBack(Math.max(0, age)));
+      ctx.save(); ctx.translate(t.px, t.py); ctx.scale(sc, sc); ctx.translate(-t.px, -t.py);
+    }
     drawTowerBody(ctx, t.type, t.px + rx, t.py + ry, T, { level: Math.min(3, t.level), branch: t.branch, ang: t.ang, time: tm, rank: t.rank });
+    if (age < 1) ctx.restore();
+    if (t.flashT > 0 && (t.type === 'cannon' || t.type === 'arrow' || t.type === 'poison' || t.type === 'frost')) {
+      const mx = t.px + Math.cos(t.ang) * T * 0.5, my = t.py + Math.sin(t.ang) * T * 0.5;
+      const col = t.type === 'cannon' ? '255,190,90' : t.type === 'frost' ? '170,220,255' : t.type === 'poison' ? '140,255,90' : '255,240,200';
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const fr = (t.type === 'cannon' ? 18 : 10) * (t.flashT / 0.08);
+      const g = ctx.createRadialGradient(mx, my, 0, mx, my, fr);
+      g.addColorStop(0, `rgba(${col},0.95)`); g.addColorStop(1, `rgba(${col},0)`);
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(mx, my, fr, 0, 7); ctx.fill(); ctx.restore();
+    }
     if (t.auraD > 0) { ctx.fillStyle = 'rgba(255,170,60,0.9)'; ctx.beginPath(); ctx.arc(t.px + T * 0.38, t.py + T * 0.38, 2.5, 0, 7); ctx.fill(); }
     if (sel && sel.kind === 'tower' && sel.ref === t) {
-      ctx.strokeStyle = '#7dff7d'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.ellipse(t.px, t.py + 4, T * 0.55, T * 0.45, 0, 0, 7); ctx.stroke();
+      ctx.save(); ctx.strokeStyle = '#7dff7d'; ctx.lineWidth = 2.5; ctx.shadowColor = '#3aff3a'; ctx.shadowBlur = 8;
+      ctx.setLineDash([10, 5]); ctx.lineDashOffset = -tm * 20;
+      ctx.beginPath(); ctx.ellipse(t.px, t.py + 4, T * 0.58, T * 0.48, 0, 0, 7); ctx.stroke(); ctx.restore();
     }
   }
 
@@ -87,15 +119,29 @@ function draw() {
 
   // fx
   for (const f of G.fx) drawFx(f);
+  // smoke (normal blend), then glowing sparks (additive)
   for (const p of G.parts) {
-    ctx.globalAlpha = 1 - p.t / p.life; ctx.fillStyle = p.color;
-    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    if (p.glow) continue;
+    const a = 1 - p.t / p.life;
+    ctx.globalAlpha = p.smoke ? a * 0.45 : a; ctx.fillStyle = p.color;
+    if (p.smoke) { ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, 7); ctx.fill(); }
+    else ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
   }
+  ctx.globalCompositeOperation = 'lighter';
+  for (const p of G.parts) {
+    if (!p.glow) continue;
+    ctx.globalAlpha = 1 - p.t / p.life; ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size * 0.8, 0, 7); ctx.fill();
+  }
+  drawFireflies(tm);
+  ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
+  drawClouds(tm);
   ctx.textAlign = 'center'; ctx.lineJoin = 'round';
   for (const t of G.texts) {
     ctx.globalAlpha = Math.min(1, 2 * (1 - t.t / t.life));
-    ctx.font = `bold ${t.size}px "Trebuchet MS", sans-serif`;
+    const pop = 1 + 0.5 * Math.max(0, 1 - t.t / 0.15);
+    ctx.font = `bold ${Math.round(t.size * pop)}px "Trebuchet MS", sans-serif`;
     ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.lineWidth = 3; ctx.strokeText(t.text, t.x, t.y);
     ctx.fillStyle = t.color; ctx.fillText(t.text, t.x, t.y);
   }
@@ -142,9 +188,35 @@ function draw() {
   }
 }
 
+function drawFireflies(tm) {
+  for (let i = 0; i < 22; i++) {
+    const x = ((i * 397.3) % MAP_W) + Math.sin(tm * 0.37 + i * 1.7) * 46;
+    const y = ((i * 211.7) % MAP_H) + Math.cos(tm * 0.29 + i * 2.3) * 32;
+    const a = Math.max(0, Math.sin(tm * 1.3 + i * 4.1)) * 0.55;
+    if (a < 0.03) continue;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, 7);
+    g.addColorStop(0, `rgba(230,255,150,${a})`); g.addColorStop(1, 'rgba(230,255,150,0)');
+    ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.fillRect(x - 7, y - 7, 14, 14);
+  }
+}
+
+function drawClouds(tm) {
+  const cs = cloudSprite();
+  ctx.globalAlpha = 0.28;
+  for (let i = 0; i < 4; i++) {
+    const span = MAP_W + 900;
+    const x = ((i * 520 + tm * (9 + i * 2)) % span) - 450;
+    const y = (i * 173) % MAP_H - 80;
+    ctx.drawImage(cs, x, y, 420 * (1 + i * 0.15), 260 * (1 + i * 0.15));
+  }
+  ctx.globalAlpha = 1;
+}
+
 function drawMenuBg() {
-  if (!menuBg) menuBg = buildBackground(COLS, ROWS, T, null, [], mulberry32(7));
-  ctx.drawImage(menuBg, 0, 0);
+  if (!menuBg) menuBg = buildBackground(COLS, ROWS, T, null, [], mulberry32(7), RES);
+  ctx.drawImage(menuBg, 0, 0, MAP_W, MAP_H);
+  drawClouds(menuTime * 3);
+  ctx.globalCompositeOperation = 'lighter'; drawFireflies(menuTime); ctx.globalCompositeOperation = 'source-over';
   ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0, 0, MAP_W, MAP_H);
   drawPortal(ctx, (SPAWN.x + 0.5) * T, (SPAWN.y + 0.5) * T, T, menuTime);
   drawGate(ctx, (EXIT.x + 0.5) * T, (EXIT.y + 0.5) * T, T, menuTime, 0);
@@ -165,7 +237,20 @@ function drawRange(x, y, r, rgba) {
   ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
 }
 
+const TRAIL = { arrow: '235,225,190', shard: '170,220,255', glob: '130,255,90' };
 function drawProj(p) {
+  const tc = TRAIL[p.kind];
+  if (tc && p.trail && p.trail.length >= 4) {
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+    const n = p.trail.length / 2;
+    for (let i = 1; i < n; i++) {
+      ctx.strokeStyle = `rgba(${tc},${(i / n) * (p.kind === 'arrow' ? 0.35 : 0.6)})`;
+      ctx.lineWidth = p.kind === 'arrow' ? 1.5 : 2 + (i / n) * 3;
+      ctx.beginPath(); ctx.moveTo(p.trail[i * 2 - 2], p.trail[i * 2 - 1]);
+      ctx.lineTo(i === n - 1 ? p.x : p.trail[i * 2], i === n - 1 ? p.y : p.trail[i * 2 + 1]); ctx.stroke();
+    }
+    ctx.restore();
+  }
   ctx.save(); ctx.translate(p.x, p.y);
   switch (p.kind) {
     case 'arrow':
@@ -197,6 +282,12 @@ function drawProj(p) {
 
 function drawFx(f) {
   const k = f.t / f.life;
+  const additive = f.kind === 'ring' || f.kind === 'bolt' || f.kind === 'boom' || f.kind === 'meteor';
+  if (additive) ctx.globalCompositeOperation = 'lighter';
+  drawFxInner(f, k);
+  ctx.globalCompositeOperation = 'source-over';
+}
+function drawFxInner(f, k) {
   switch (f.kind) {
     case 'ring':
       ctx.strokeStyle = `rgba(${f.color},${1 - k})`; ctx.lineWidth = 3;
@@ -221,7 +312,9 @@ function drawFx(f) {
       const sx = f.x - 260 * (1 - fall), sy = f.y - 420 * (1 - fall);
       ctx.strokeStyle = `rgba(255,140,40,${0.6})`; ctx.lineWidth = 10;
       ctx.beginPath(); ctx.moveTo(sx - 60, sy - 100); ctx.lineTo(sx, sy); ctx.stroke();
-      ctx.fillStyle = '#ffdd88'; ctx.beginPath(); ctx.arc(sx, sy, 12, 0, 7); ctx.fill();
+      const mg = ctx.createRadialGradient(sx, sy, 0, sx, sy, 34);
+      mg.addColorStop(0, 'rgba(255,250,220,1)'); mg.addColorStop(0.3, 'rgba(255,170,60,0.9)'); mg.addColorStop(1, 'rgba(255,80,20,0)');
+      ctx.fillStyle = mg; ctx.beginPath(); ctx.arc(sx, sy, 34, 0, 7); ctx.fill();
       ctx.strokeStyle = 'rgba(255,80,40,0.8)'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
       ctx.beginPath(); ctx.arc(f.x, f.y, T * 1.6, 0, 7); ctx.stroke(); ctx.setLineDash([]);
       break;
@@ -296,9 +389,11 @@ window.addEventListener('keydown', e => {
   Sfx.init();
   if (G.modal || G.over) {
     if (G.modal === 'draft' && /^[1-4]$/.test(e.key)) { const b = document.querySelectorAll('.relic-card')[+e.key - 1]; if (b) b.click(); }
+    if (G.modal === 'end' && (e.key === 'Enter' || e.key.toUpperCase() === 'R')) { e.preventDefault(); startGame(G.diff); }
     return;
   }
   const k = e.key.toUpperCase();
+  if (e.shiftKey && k === 'R') { e.preventDefault(); requestRestart(); return; }
   if (k === 'ESCAPE') { cancelModes(); return; }
   if (k === ' ' || k === 'P') { e.preventDefault(); togglePause(); return; }
   if (k === 'N') { sendWave(); return; }
@@ -586,7 +681,7 @@ function uiEndScreen(won) {
     <div class="honor">+${G.honorEarned} Honor <span class="dim">(total ${META.honor})</span></div>
     <div class="btnrow">
       ${won ? '<button class="btn gold" id="endless">Continue: Endless Mode</button>' : ''}
-      <button class="btn" id="again">Play Again</button>
+      <button class="btn gold" id="again">Play Again <span class="dim">[R]</span></button>
       <button class="btn" id="tomenu">Main Menu</button>
     </div>`, 'end');
   if (won) $('endless').addEventListener('click', () => { hideModal(); continueEndless(); });
@@ -634,6 +729,7 @@ function showHow() {
     <p><b>Upgrades:</b> Towers have 3 levels, then a permanent <b>Specialization</b> choice costing <span class="lumber">Lumber</span> (earned every 5 waves and from bosses). Towers gain veterancy ranks from kills.</p>
     <p><b>Relics:</b> Every 5 waves cleared, draft one of several powerful run-wide boons.</p>
     <p><b>Honor:</b> Every run earns Honor for permanent Talents. Higher difficulty = more Honor.</p>
+    <p><b>Restart:</b> the ↻ button or <b>Shift+R</b> (press twice). Honor from waves you cleared is kept.</p>
     <p><b>Hotkeys:</b> Q W E R / A S D F / Z X C V match the command card · <b>Shift</b>+click builds multiple · <b>Esc</b>/right-click cancels · <b>Space</b> pause · <b>N</b> next wave · <b>1/2/3</b> game speed · <b>Del</b> sell.</p>
     </div><div class="btnrow"><button class="btn" id="back">Back</button></div>`, 'how');
   $('back').addEventListener('click', showMenu);
@@ -644,11 +740,34 @@ function showPauseMenu() {
   G.paused = true; G.modal = 'pause';
   showModal(`<h2>Menu</h2><div class="btnrow col">
     <button class="btn" id="resume">Resume</button>
-    <button class="btn" id="restart">Restart</button>
+    <button class="btn" id="restart">Restart (keeps Honor)</button>
     <button class="btn" id="quit">Surrender (keep Honor)</button></div>`, 'pause');
   $('resume').addEventListener('click', () => { G.modal = null; G.paused = false; hideModal(); updateTopBar(true); });
-  $('restart').addEventListener('click', () => startGame(G.diff));
+  $('restart').addEventListener('click', quickRestart);
   $('quit').addEventListener('click', () => { hideModal(); G.modal = null; endGame(false); });
+}
+
+// Two-step restart: first press arms the button, second press within 3s restarts.
+let restartArmed = 0;
+function requestRestart() {
+  if (!G) return;
+  if (G.over) { startGame(G.diff); return; }
+  const btn = $('restartBtn');
+  if (performance.now() < restartArmed) { quickRestart(); return; }
+  restartArmed = performance.now() + 3000;
+  btn.classList.add('armed'); btn.textContent = '↻ Restart?';
+  uiMessage('Press restart again to start over (Shift+R)', '#ffd34a');
+  clearTimeout(requestRestart.t);
+  requestRestart.t = setTimeout(resetRestartBtn, 3000);
+}
+function resetRestartBtn() { restartArmed = 0; const b = $('restartBtn'); b.classList.remove('armed'); b.textContent = '↻'; }
+function quickRestart() {
+  if (!G) return;
+  const diff = G.diff;
+  const h = G.over ? 0 : bankHonor();
+  resetRestartBtn();
+  startGame(diff);
+  if (h > 0) uiMessage(`+${h} Honor banked from your last run`, '#ffd34a');
 }
 
 function startGame(diff) {
@@ -694,6 +813,7 @@ function boot() {
   $('pauseBtn').addEventListener('click', togglePause);
   $('muteBtn').addEventListener('click', () => { Sfx.init(); Sfx.toggle(); updateTopBar(true); });
   $('menuBtn').addEventListener('click', showPauseMenu);
+  $('restartBtn').addEventListener('click', () => { Sfx.init(); requestRestart(); });
   $('cmd').addEventListener('mouseleave', () => { hoverHk = null; hideTip(); });
   showMenu();
   requestAnimationFrame(frame);

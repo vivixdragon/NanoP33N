@@ -51,7 +51,7 @@ function newGame(diffId) {
     maxLivesShown: 0,
     wave: 0, cleared: 0, timer: 40, firstWave: true, endless: false,
     grid: new Uint8Array(COLS * ROWS), towerAt: new Array(COLS * ROWS).fill(null), dist: null,
-    obstacles: [], towers: [], creeps: [], projs: [], fx: [], texts: [], parts: [],
+    obstacles: [], towers: [], creeps: [], projs: [], fx: [], texts: [], parts: [], decals: [], pathVer: 0,
     spawners: [], waveAlive: {}, plan: [],
     mods: baseMods(), relics: {}, rerolls: talent('reroll'),
     spellCd: { meteor: 0, nova: 0, midas: 0 }, midasT: 0,
@@ -67,7 +67,7 @@ function newGame(diffId) {
   const prng = mulberry32(seed ^ 0x5bd1e995);
   for (let w = 1; w <= FINAL_WAVE; w++) G.plan[w] = genWave(w, prng);
   G.planRng = prng;
-  G.bg = buildBackground(COLS, ROWS, T, G.grid, G.obstacles, mulberry32(seed ^ 0x1234));
+  G.bg = null; // built lazily by the renderer at the current display resolution
   META.games++; saveMeta();
 }
 
@@ -132,7 +132,7 @@ function tracePath(dist) {
   }
   return pts;
 }
-function updatePath() { G.pathPts = tracePath(G.dist); G.pathLen = G.pathPts.length - 1; }
+function updatePath() { G.pathPts = tracePath(G.dist); G.pathLen = G.pathPts.length - 1; G.pathVer++; }
 
 // ---------- wave generation ----------
 function waveHP(w) { return 18 * Math.pow(1.115, w - 1) + 6 * (w - 1); }
@@ -327,7 +327,10 @@ function killCreep(c, src) {
   addGold(gold, c.x, c.y - 10, midas > 1 ? '#fff1a0' : '#ffd34a');
   if (c.lumber) { G.lumber += c.lumber; floatText(c.x, c.y - 26, `+${c.lumber} lumber`, '#c9a46a', 14); }
   if (c.boss) { G.stats.bossKills++; G.shake = Math.max(G.shake, 10); Sfx.play('boom'); uiMessage(`${c.bossName || c.name} has been slain!`, '#ffcf3a'); }
-  burst(c.x, c.y, c.boss ? 40 : 10, c.type === 'splitter' || c.type === 'oozeling' ? '#9be04a' : c.flying ? '#5a3a62' : '#8a2a1a', c.boss ? 4 : 2);
+  const gore = CORPSE_COLORS[c.type] || '#6a1a12';
+  burst(c.x, c.y, c.boss ? 40 : 10, gore, c.boss ? 4 : 2);
+  addDecal({ kind: 'corpse', x: c.x, y: c.y, r: c.r, type: c.type, ang: c.ang, color: gore, seed: c.id, life: c.boss ? 20 : 9 });
+  if (c.boss) smoke(c.x, c.y, 14, 2);
   Sfx.play('die');
   if (src) {
     src.kills++;
@@ -575,6 +578,7 @@ function updateTower(t, dt) {
   if (!s.attacks) return;
   t.cd -= dt;
   if (t.recoil > 0) t.recoil -= dt;
+  if (t.flashT > 0) t.flashT -= dt;
   if (t.cd > 0) return;
   const cands = inRange(t, s);
   if (!cands.length) { t.cd = 0.05; return; }
@@ -613,6 +617,7 @@ function updateTower(t, dt) {
     Sfx.play(t.type);
   }
   t.recoil = 0.1;
+  t.flashT = 0.08;
   t.cd = s.rate;
 }
 
@@ -646,7 +651,9 @@ function projHit(p) {
         }
       }
       G.fx.push({ kind: 'boom', x: p.x, y: p.y, r: s.splash, t: 0, life: 0.35 });
-      burst(p.x, p.y, 6, '#ffae3a', 2);
+      burst(p.x, p.y, 8, '#ffae3a', 2, true);
+      smoke(p.x, p.y, s.splash > T * 1.4 ? 6 : 3, 1);
+      addDecal({ kind: 'scorch', x: p.x, y: p.y, r: s.splash * 0.55, seed: p.x * 7 + p.y, life: 4 });
       if (s.splash > T * 1.4) G.shake = Math.max(G.shake, 2);
       break;
     }
@@ -681,14 +688,28 @@ function floatText(x, y, text, color, size = 12) {
   if (G.texts.length > 80) G.texts.shift();
   G.texts.push({ x, y, text, color, size, t: 0, life: 1.0 });
 }
-function burst(x, y, n, color, spd = 2) {
+function burst(x, y, n, color, spd = 2, glow = false) {
   for (let i = 0; i < n; i++) {
-    if (G.parts.length > 500) G.parts.shift();
+    if (G.parts.length > 600) G.parts.shift();
     const a = Math.random() * Math.PI * 2, v = (0.4 + Math.random()) * spd * 40;
-    G.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0, life: 0.4 + Math.random() * 0.4, color, size: 1.5 + Math.random() * 2.5 });
+    G.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0, life: 0.4 + Math.random() * 0.4, color, size: 1.5 + Math.random() * 2.5, glow });
   }
 }
-function sparks(x, y, n, color) { burst(x, y, n, color, 1.2); }
+function sparks(x, y, n, color) { burst(x, y, n, color, 1.2, true); }
+function smoke(x, y, n, spread = 1) {
+  for (let i = 0; i < n; i++) {
+    if (G.parts.length > 600) G.parts.shift();
+    const a = Math.random() * Math.PI * 2, v = Math.random() * 18 * spread;
+    G.parts.push({ x: x + Math.cos(a) * 6 * spread, y: y + Math.sin(a) * 6 * spread, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 14, t: 0,
+      life: 0.8 + Math.random() * 0.7, color: Math.random() < 0.5 ? '#3a3631' : '#59544c', size: 5 + Math.random() * 5 * spread, smoke: true });
+  }
+}
+const CORPSE_COLORS = { splitter: '#7fc23a', oozeling: '#7fc23a', golem: '#6d675c', bat: '#4a1a3a', shaman: '#5a1a12', knight: '#2a2e38', drake: '#cfc3a8', boss: '#4a0a0a' };
+function addDecal(d) {
+  d.t = 0;
+  G.decals.push(d);
+  if (G.decals.length > 160) G.decals.shift();
+}
 
 // ---------- main update ----------
 function update(dt) {
@@ -718,7 +739,9 @@ function update(dt) {
         const R = T * 1.6, dmg = meteorDamage();
         for (const c of G.creeps) if (!c.dead && Math.hypot(c.x - m.x, c.y - m.y) <= R + c.r) dealDamage(c, dmg, 'chaos', null);
         G.fx.push({ kind: 'boom', x: m.x, y: m.y, r: R, t: 0, life: 0.6, big: true });
-        burst(m.x, m.y, 40, '#ff7a2a', 4); burst(m.x, m.y, 20, '#ffd34a', 3);
+        burst(m.x, m.y, 40, '#ff7a2a', 4, true); burst(m.x, m.y, 20, '#ffd34a', 3, true);
+        smoke(m.x, m.y, 16, 2.5);
+        addDecal({ kind: 'scorch', x: m.x, y: m.y, r: R * 0.9, seed: m.x + m.y, life: 14 });
         G.shake = Math.max(G.shake, 14);
         Sfx.play('meteor');
       }
@@ -735,7 +758,11 @@ function update(dt) {
     if (!p.target.dead) { p.lx = p.target.x; p.ly = p.target.y - (p.target.flying ? 10 : 0); }
     const dx = p.lx - p.x, dy = p.ly - p.y, d = Math.hypot(dx, dy), mv = p.speed * dt;
     if (d <= mv + 4) { p.x = p.lx; p.y = p.ly; p.done = true; if (!p.target.dead || p.kind === 'ball') projHit(p); }
-    else { p.x += dx / d * mv; p.y += dy / d * mv; p.travelled += mv; p.ang = Math.atan2(dy, dx); }
+    else {
+      (p.trail || (p.trail = [])).push(p.x, p.y);
+      if (p.trail.length > 12) p.trail.splice(0, 2);
+      p.x += dx / d * mv; p.y += dy / d * mv; p.travelled += mv; p.ang = Math.atan2(dy, dx);
+    }
   }
   G.projs = G.projs.filter(p => !p.done);
   G.creeps = G.creeps.filter(c => !c.dead);
@@ -745,7 +772,19 @@ function update(dt) {
   G.fx = G.fx.filter(f => f.t < f.life);
   for (const t of G.texts) { t.t += dt; t.y -= 22 * dt; }
   G.texts = G.texts.filter(t => t.t < t.life);
-  for (const p of G.parts) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.92; p.vy *= 0.92; }
+  for (const p of G.parts) {
+    p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt;
+    if (p.smoke) { p.vx *= 0.96; p.vy *= 0.96; p.size += dt * 9; } else { p.vx *= 0.92; p.vy *= 0.92; }
+  }
+  for (const d of G.decals) d.t += dt;
+  if (G.decals.length && G.decals[0].t > G.decals[0].life) G.decals = G.decals.filter(d => d.t < d.life);
+  // rift portal motes
+  if (Math.random() < dt * 14) {
+    const a = Math.random() * Math.PI * 2, r = T * (0.5 + Math.random() * 0.4);
+    const px = (SPAWN.x + 0.5) * T, py = (SPAWN.y + 0.5) * T;
+    G.parts.push({ x: px + Math.cos(a) * r, y: py + Math.sin(a) * r, vx: -Math.sin(a) * 30 - Math.cos(a) * 20, vy: Math.cos(a) * 30 - Math.sin(a) * 20,
+      t: 0, life: 0.7, color: Math.random() < 0.5 ? '#c78aff' : '#7a4aff', size: 2 + Math.random() * 2, glow: true });
+  }
   G.parts = G.parts.filter(p => p.t < p.life);
   if (G.shake > 0) G.shake = Math.max(0, G.shake - dt * 30);
   if (G.gateHurt > 0) G.gateHurt = Math.max(0, G.gateHurt - dt * 2);
@@ -823,6 +862,15 @@ function endGame(won) {
   }
   Sfx.play(won ? 'win' : 'lose');
   uiEndScreen(won);
+}
+
+// Bank Honor for the waves cleared so far (used by quick restart). Returns the amount.
+function bankHonor() {
+  if (!G || G.honorGiven) return 0;
+  const h = Math.floor(G.cleared * G.D.honor);
+  G.honorGiven = true; G.honorEarned = h;
+  META.honor += h; META.kills += G.stats.kills; saveMeta();
+  return h;
 }
 
 function continueEndless() {
