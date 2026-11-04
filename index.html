@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rift Wardens TD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="wrap">
+  <div id="topbar">
+    <div class="res" title="Gold"><span class="ico gold">●</span><span id="tGold">0</span></div>
+    <div class="res" title="Lumber — spent on tower specializations"><span class="ico lumber">▲</span><span id="tLumber">0</span></div>
+    <div class="res" title="Lives"><span class="ico lives">♥</span><span id="tLives">0</span></div>
+    <div class="res" title="Interest paid at the start of the next wave"><span class="dim">Interest</span>&nbsp;<span id="tInterest" class="gold">+0</span></div>
+    <div class="spacer"></div>
+    <div class="res wave"><span class="dim">Wave</span>&nbsp;<span id="tWave">0</span></div>
+    <div class="res"><span id="tTimer" class="dim"></span></div>
+    <button id="sendBtn" class="tbtn send" title="Send next wave early (N)">Send Wave</button>
+    <div class="spacer"></div>
+    <button class="tbtn spd" data-s="1" title="Speed 1x (1)">1x</button>
+    <button class="tbtn spd" data-s="2" title="Speed 2x (2)">2x</button>
+    <button class="tbtn spd" data-s="3" title="Speed 3x (3)">3x</button>
+    <button class="tbtn" id="pauseBtn" title="Pause (Space)">❚❚</button>
+    <button class="tbtn" id="muteBtn" title="Sound">🔊</button>
+    <button class="tbtn" id="menuBtn" title="Menu">☰</button>
+  </div>
+  <div id="stage">
+    <canvas id="cv" width="1280" height="640"></canvas>
+    <div id="msgs"></div>
+    <div id="banner"></div>
+  </div>
+  <div id="hud">
+    <div id="intel" class="frame"></div>
+    <div id="info" class="frame"></div>
+    <div id="cmdwrap" class="frame"><div id="cmd"></div></div>
+  </div>
+  <div id="tooltip"></div>
+  <div id="modal" class="hidden"></div>
+</div>
+<script src="src/data.js"></script>
+<script src="src/audio.js"></script>
+<script src="src/render.js"></script>
+<script src="src/game.js"></script>
+<script src="src/ui.js"></script>
+</body>
+</html>
