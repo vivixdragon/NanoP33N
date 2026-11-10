@@ -46,7 +46,7 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
 @media (max-width: 920px) { .grid { grid-template-columns: minmax(0, 1fr); } }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; min-width: 0; }
 .stage { display: flex; flex-direction: column; gap: 10px; }
-canvas { width: 100%; height: auto; display: block; border-radius: 8px; background: var(--surface-2); touch-action: manipulation; cursor: pointer; }
+canvas { width: 100%; height: auto; display: block; border-radius: 8px; background: var(--surface-2); touch-action: manipulation; }
 .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 13px; color: var(--muted); }
 .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
 .heatbar { display: inline-block; width: 90px; height: 10px; border-radius: 5px; background: linear-gradient(90deg, #2f7fd6, #39c2b0, #f2cf3a, #f07b2a, #d8352a); vertical-align: -1px; margin: 0 6px; }
@@ -94,7 +94,7 @@ label.blk { display: block; font-size: 13px; color: var(--muted); margin-bottom:
 <div class="wrap">
   <header>
     <h1>Airflow Bench</h1>
-    <p>Side view of an O11 Dynamic EVO–style case through the glass. Front is on the left, rear on the right. Tap any fan on the drawing, or use the controls, to switch it between off, intake and exhaust.</p>
+    <p>Side view of an O11 Dynamic EVO–style case through the glass. Front is on the left, rear on the right. Tap any fan on the drawing, or use the controls, to switch it between off, intake and exhaust. Drag the GPU, CPU or RAM to move them, and drag the radiator onto another wall.</p>
   </header>
 
   <div class="grid">
@@ -160,6 +160,7 @@ label.blk { display: block; font-size: 13px; color: var(--muted); margin-bottom:
         </select>
         <div class="row" style="margin-top:10px"><span style="min-width:72px">GPU power</span><input type="range" id="gpuW" min="0" max="450" step="10" value="360"><output id="gpuWo">360 W</output></div>
         <div class="row"><span style="min-width:72px">CPU power</span><input type="range" id="cpuW" min="0" max="250" step="10" value="150"><output id="cpuWo">150 W</output></div>
+        <button type="button" class="chip" id="resetParts" style="margin-top:10px">Reset component positions</button>
       </div>
     </aside>
   </div>
@@ -183,11 +184,11 @@ const ZONES = {
   rear:   { label: 'Rear',   wall: 'right',  sizes: [120],      spans: { 120: [[40, 160]] } },
 };
 const VENTS = [[200, 240], [320, 440]];       // PCIe slot covers & panel gaps on the rear wall (passive)
-const PARTS = {
+const DEFAULT_PARTS = () => ({
   gpu: { x0: 161, x1: 465, y0: 250, y1: 305, label: 'RTX 5080' },
   cpu: { x0: 285, x1: 345, y0: 115, y1: 172, label: 'CPU' },
-  ram: { x0: 372, x1: 384, y0: 86, y1: 200, label: '' },
-};
+  ram: { x0: 372, x1: 384, y0: 86, y1: 200, label: 'RAM' },
+});
 const RAD_MM = 55; // radiator + fan thickness
 
 // ---------------------------------------------------------------- state
@@ -198,7 +199,7 @@ const DEFAULT = () => ({
     bottom: { size: 120, fans: ['in', 'in', 'in'], speed: 70 },
     rear: { size: 120, fans: ['out'], speed: 70 },
   },
-  aio: 'top', gpuW: 360, cpuW: 150,
+  aio: 'top', gpuW: 360, cpuW: 150, parts: DEFAULT_PARTS(),
 });
 const PRESETS = {
   rec: DEFAULT,
@@ -212,6 +213,7 @@ const PRESETS = {
 };
 let S = DEFAULT();
 try { const saved = JSON.parse(localStorage.getItem('airflow-bench') || 'null'); if (saved && saved.zones) S = saved; } catch (e) { /* storage unavailable */ }
+if (!S.parts || !S.parts.gpu) S.parts = DEFAULT_PARTS();
 function save() { try { localStorage.setItem('airflow-bench', JSON.stringify(S)); } catch (e) { /* ignore */ } }
 
 // ---------------------------------------------------------------- simulation fields
@@ -225,20 +227,25 @@ const heat = new Float32Array(NX * NY);
 let fans = [], vents = [], metrics = {};
 const HEAT = 1.5; // tuned so the recommended layout's case air lands near the physics estimate
 
-for (const k in PARTS) {
-  const p = PARTS[k];
-  for (let y = celly(p.y0); y <= celly(p.y1 - 1); y++) for (let x = cell(p.x0); x <= cell(p.x1 - 1); x++) solid[idx(x, y)] = 1;
+function buildSolid() {
+  solid.fill(0);
+  for (const k in S.parts) {
+    const p = S.parts[k];
+    for (let y = celly(p.y0); y <= celly(p.y1 - 1); y++) for (let x = cell(p.x0); x <= cell(p.x1 - 1); x++) solid[idx(x, y)] = 1;
+  }
 }
 
-function wallCells(wall, a, b) {
+function wallCells(wall, a, b, all) {
   const out = [];
   if (wall === 'top' || wall === 'bottom') { const y = wall === 'top' ? 0 : NY - 1; for (let x = cell(a); x <= cell(b - 1); x++) out.push(idx(x, y)); }
   else { const x = wall === 'left' ? 0 : NX - 1; for (let y = celly(a); y <= celly(b - 1); y++) out.push(idx(x, y)); }
-  return out.filter(c => !solid[c]);
+  return all ? out : out.filter(c => !solid[c]);
 }
 const NORMAL = { top: [0, 1], bottom: [0, -1], left: [1, 0], right: [-1, 0] };
 
-function rebuild() {
+// quick = called while dragging: warm-start the solver, keep particles, skip the DOM controls
+function rebuild(quick) {
+  buildSolid();
   // AIO zone must hold 3×120 and its fans must all push the same way
   if (S.aio !== 'none') {
     const z = S.zones[S.aio];
@@ -260,7 +267,10 @@ function rebuild() {
       if (S.aio === zk) cfm *= 0.78;
       if (mode === 'in') cfm *= 0.92;
       const cells = wallCells(Z.wall, a, b);
-      const f = { zone: zk, i, a, b, wall: Z.wall, mode, cfm: mode === 'off' ? 0 : cfm, size: z.size, cells, rad: S.aio === zk };
+      const blocked = wallCells(Z.wall, a, b, true).length - cells.length;
+      if (blocked > 0 && cells.length) cfm *= cells.length / (cells.length + blocked);
+      if (!cells.length) cfm = 0;
+      const f = { zone: zk, i, a, b, wall: Z.wall, mode, cfm: mode === 'off' ? 0 : cfm, size: z.size, cells, rad: S.aio === zk, blocked };
       fans.push(f);
       if (mode === 'off' || !cells.length) return;
       const per = cfm / cells.length * (mode === 'in' ? 1 : -1);
@@ -273,7 +283,7 @@ function rebuild() {
   vents = VENTS.flatMap(([a, b]) => wallCells('right', a, b));
   const net = intake - exhaust;
   for (const c of vents) src[c] -= net / vents.length;
-  solvePotential();
+  solvePotential(quick);
   buildVelocity();
   // inlet temperatures: fresh air is 0 °C above room; a radiator used as intake pre-heats its air
   let radRise = 0;
@@ -285,10 +295,11 @@ function rebuild() {
   for (const f of fans) if (f.mode === 'in') for (const c of f.cells) inletT[c] = f.rad ? radRise : 0;
   if (net < 0) for (const c of vents) inletT[c] = 0;
   // heat sources: GPU everywhere around its shroud (more out the top/back like a flow-through card), CPU if air-cooled
-  addHeatAround(PARTS.gpu, S.gpuW, { top: 0.55, bottom: 0.25, side: 0.2 });
+  addHeatAround(S.parts.gpu, S.gpuW, { top: 0.55, bottom: 0.25, side: 0.2 });
   const radFans = fans.filter(f => f.rad && f.mode !== 'off');
-  if (S.aio === 'none' || !radFans.length) addHeatAround(PARTS.cpu, S.cpuW, { top: 0.4, bottom: 0.2, side: 0.4 });
+  if (S.aio === 'none' || !radFans.length) addHeatAround(S.parts.cpu, S.cpuW, { top: 0.4, bottom: 0.2, side: 0.4 });
   metrics = { intake, exhaust, net, radRise, zoneCfm };
+  if (quick) { updateReadouts(); return; }
   seedParticles(true);
   updateUI();
   save();
@@ -303,9 +314,9 @@ function addHeatAround(p, watts, w) {
 }
 
 // Potential flow: solve ∇²φ = −s with walls/parts as no-flow boundaries; velocity = −∇φ.
-function solvePotential() {
-  phi.fill(0);
-  for (let it = 0; it < 900; it++) {
+function solvePotential(warm) {
+  if (!warm) phi.fill(0);
+  for (let it = 0, n = warm ? 220 : 900; it < n; it++) {
     for (let y = 0; y < NY; y++) for (let x = 0; x < NX; x++) {
       const c = idx(x, y); if (solid[c]) continue;
       let s = 0, k = 0;
@@ -374,8 +385,9 @@ function probe(region) {
 }
 function rectCells(x0mm, x1mm, y0mm, y1mm) { const out = []; for (let y = celly(y0mm); y <= celly(y1mm); y++) for (let x = cell(x0mm); x <= cell(x1mm); x++) out.push(idx(x, y)); return out; }
 const PROBE = {
-  gpuIn: rectCells(200, 440, 308, 345),
-  cpu: rectCells(260, 372, 70, 205),
+  // air just under the GPU (where its fans pull from) and the air around the CPU socket
+  get gpuIn() { const g = S.parts.gpu; return rectCells(g.x0 + 30, g.x1 - 20, g.y1 + 4, Math.min(CASE_H - 1, g.y1 + 40)); },
+  get cpu() { const c = S.parts.cpu; return rectCells(Math.max(0, c.x0 - 25), Math.min(CASE_W - 1, c.x1 + 25), Math.max(0, c.y0 - 45), Math.min(CASE_H - 1, c.y1 + 30)); },
   all: [...Array(NX * NY).keys()],
 };
 
@@ -471,11 +483,10 @@ function draw() {
   }
   // radiator band
   if (S.aio !== 'none') {
-    const t = RAD_MM / MM * px, z = ZONES[S.aio], sp = z.spans[120];
-    const a = sp[0][0] / MM * px, b = sp[sp.length - 1][1] / MM * px;
-    let r;
-    if (z.wall === 'top') r = [ix + a, iy, b - a, t]; else if (z.wall === 'bottom') r = [ix + a, iy + ih - t, b - a, t]; else r = [ix, iy + a, t, b - a];
-    ctx.save(); ctx.fillStyle = colors['surface']; ctx.globalAlpha = 0.55; ctx.fillRect(...r); ctx.globalAlpha = 1;
+    const z = ZONES[S.aio], sp = z.spans[120];
+    const a = sp[0][0] / MM * px, b = sp[sp.length - 1][1] / MM * px, t = RAD_MM / MM * px;
+    const rr = radRect(S.aio), r = [rr.x, rr.y, rr.w, rr.h];
+    ctx.save(); ctx.fillStyle = colors['surface']; ctx.globalAlpha = drag && drag.kind === 'rad' ? 0.25 : 0.55; ctx.fillRect(...r); ctx.globalAlpha = 1;
     ctx.strokeStyle = colors['muted']; ctx.lineWidth = 1; ctx.beginPath();
     const [rx, ry, rw, rh] = r;
     ctx.rect(rx, ry, rw, rh); ctx.clip();
@@ -485,12 +496,27 @@ function draw() {
     if (z.wall === 'left') { ctx.save(); ctx.translate(ix + t / 2 + 4, iy + (a + b) / 2); ctx.rotate(-Math.PI / 2); ctx.fillText('H150 RADIATOR', 0, 0); ctx.restore(); }
     else ctx.fillText('H150 RADIATOR', ix + (a + b) / 2, z.wall === 'top' ? iy + t / 2 + 4 : iy + ih - t / 2 + 4);
   }
-  // components
-  for (const k in PARTS) {
-    const p = PARTS[k];
-    const x = ix + cell(p.x0) * px, y = iy + celly(p.y0) * px, w = (cell(p.x1 - 1) - cell(p.x0) + 1) * px, h = (celly(p.y1 - 1) - celly(p.y0) + 1) * px;
-    ctx.fillStyle = colors['case']; ctx.globalAlpha = 0.85; ctx.fillRect(x, y, w, h); ctx.globalAlpha = 1;
-    if (p.label) { ctx.fillStyle = colors['surface']; ctx.font = '600 12px "IBM Plex Sans", sans-serif'; ctx.textAlign = 'center'; ctx.fillText(p.label, x + w / 2, y + h / 2 + 4); }
+  // components (draggable)
+  for (const k in S.parts) {
+    const p = S.parts[k], q = partRect(p), x = q.x, y = q.y, w = q.w, h = q.h;
+    const active = drag && drag.kind === 'part' && drag.key === k, hot = hover === k;
+    ctx.fillStyle = colors['case']; ctx.globalAlpha = active ? 0.95 : 0.85; ctx.fillRect(x, y, w, h); ctx.globalAlpha = 1;
+    if (active || hot) { ctx.strokeStyle = colors['in']; ctx.lineWidth = 2; ctx.setLineDash(active ? [] : [5, 4]); ctx.strokeRect(x - 2, y - 2, w + 4, h + 4); ctx.setLineDash([]); }
+    // grip dots
+    ctx.fillStyle = colors['surface']; ctx.globalAlpha = 0.6;
+    const gx = x + Math.min(10, w / 2), gy = y + Math.min(10, h / 2);
+    for (let i = 0; i < 2; i++) for (let j = 0; j < 3; j++) { ctx.beginPath(); ctx.arc(gx + i * 4 - 2, gy + j * 4 - 4, 1.2, 0, 7); ctx.fill(); }
+    ctx.globalAlpha = 1;
+    if (p.label && w > 34 && h > 14) { ctx.fillStyle = colors['surface']; ctx.font = '600 12px "IBM Plex Sans", sans-serif'; ctx.textAlign = 'center'; ctx.fillText(p.label, x + w / 2, y + h / 2 + 4); }
+    else if (p.label) { ctx.save(); ctx.translate(x + w / 2 + 4, y + h / 2); ctx.rotate(-Math.PI / 2); ctx.fillStyle = colors['surface']; ctx.font = '600 10px "IBM Plex Sans", sans-serif'; ctx.textAlign = 'center'; ctx.fillText(p.label, 0, 0); ctx.restore(); }
+  }
+  // radiator being dragged: ghost under the pointer + the wall it will snap to
+  if (drag && drag.kind === 'rad' && drag.px != null) {
+    const target = nearestRadWall(drag.px, drag.py), tr = radRect(target);
+    ctx.strokeStyle = colors['in']; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.strokeRect(tr.x, tr.y, tr.w, tr.h); ctx.setLineDash([]);
+    ctx.fillStyle = colors['in']; ctx.globalAlpha = 0.18; ctx.fillRect(tr.x, tr.y, tr.w, tr.h); ctx.globalAlpha = 1;
+    ctx.fillStyle = colors['ink']; ctx.font = '600 12px "IBM Plex Sans", sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Drop to mount on ' + ZONES[target].label.toLowerCase(), drag.px, drag.py - 14);
   }
   // particles
   if (view.particles) {
@@ -607,6 +633,9 @@ function updateUI() {
   renderZones();
   $('aio').value = S.aio; $('gpuW').value = S.gpuW; $('cpuW').value = S.cpuW;
   $('gpuWo').textContent = S.gpuW + ' W'; $('cpuWo').textContent = S.cpuW + ' W';
+  updateReadouts();
+}
+function updateReadouts() {
   $('mIn').innerHTML = `${Math.round(metrics.intake)} <small>CFM</small>`;
   $('mOut').innerHTML = `${Math.round(metrics.exhaust)} <small>CFM</small>`;
   const big = Math.max(metrics.intake, metrics.exhaust, 1), ratio = metrics.net / big;
@@ -644,6 +673,9 @@ function renderNotes() {
   for (const zk of ['top', 'side', 'bottom']) { const ms = new Set(zoneModes(zk)); if (ms.size > 1) N.push(['warn', `${ZONES[zk].label} mixes intake and exhaust. Neighbouring fans will loop air between themselves.`]); }
   if (z.rear.fans[0] === 'in') N.push(['warn', 'Rear intake is unusual. It works against the hot air rising to the top.']);
   if (zoneModes('top').includes('in') && zoneModes('bottom').includes('out')) N.push(['bad', 'Top intake with bottom exhaust fights convection: hot air wants to rise.']);
+  for (const f of fans) if (f.blocked > 0 && f.mode !== 'off') N.push(['bad', `A component is blocking ${f.cells.length ? 'part of ' : ''}${ZONES[f.zone].label.toLowerCase()} fan ${f.i + 1}.`]);
+  const g = S.parts.gpu;
+  if (CASE_H - g.y1 < 40) N.push(['warn', 'The GPU sits close to the bottom panel, which starves its fans of air.']);
   const ratio = m.net / Math.max(m.intake, m.exhaust, 1);
   if (ratio > 0.1) N.push(['good', 'Positive pressure: the extra air escapes through the gaps, so dust only comes in through the filters.']);
   if (ratio < -0.1) N.push(['bad', 'Negative pressure: unfiltered air (and dust) is pulled in through every gap.']);
@@ -659,23 +691,95 @@ function updateTemps(dt) {
   $('mCpu').innerHTML = fmt(c);
 }
 
-// canvas interaction: tap a fan to cycle it
-cv.addEventListener('click', e => {
-  const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
-  for (const f of fans) {
-    const q = fanRect(f), pad = 8;
-    if (x >= q.x - pad && x <= q.x + q.w + pad && y >= q.y - pad && y <= q.y + q.h + pad) { setFan(f.zone, f.i, NEXT[f.mode]); return; }
-  }
+// ---------------------------------------------------------------- canvas interaction
+// tap a fan to cycle it; drag a component to move it; drag the radiator onto another wall
+let drag = null, hover = null, justDragged = false;
+function partRect(p) {
+  return { x: PAD + cell(p.x0) * px, y: PAD + celly(p.y0) * px, w: (cell(p.x1 - 1) - cell(p.x0) + 1) * px, h: (celly(p.y1 - 1) - celly(p.y0) + 1) * px };
+}
+function radRect(zk) {
+  const z = ZONES[zk], sp = z.spans[120], t = RAD_MM / MM * px;
+  const a = sp[0][0] / MM * px, b = sp[sp.length - 1][1] / MM * px;
+  if (z.wall === 'top') return { x: PAD + a, y: PAD, w: b - a, h: t };
+  if (z.wall === 'bottom') return { x: PAD + a, y: PAD + NY * px - t, w: b - a, h: t };
+  return { x: PAD, y: PAD + a, w: t, h: b - a };
+}
+function nearestRadWall(x, y) {
+  const d = { top: y - PAD, bottom: PAD + NY * px - y, side: x - PAD };
+  return Object.keys(d).sort((a, b) => d[a] - d[b])[0];
+}
+const inside = (q, x, y, pad = 0) => x >= q.x - pad && x <= q.x + q.w + pad && y >= q.y - pad && y <= q.y + q.h + pad;
+function localPos(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+function hitTest(x, y) {
+  for (const k of ['ram', 'cpu', 'gpu']) if (inside(partRect(S.parts[k]), x, y, 3)) return { kind: 'part', key: k };
+  if (S.aio !== 'none' && inside(radRect(S.aio), x, y)) return { kind: 'rad' };
+  for (const f of fans) if (inside(fanRect(f), x, y, 8)) return { kind: 'fan', fan: f };
+  return null;
+}
+function overlaps(a, b) { return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; }
+function movePart(key, x0mm, y0mm) {
+  const p = S.parts[key], w = p.x1 - p.x0, h = p.y1 - p.y0;
+  x0mm = Math.round(x0mm / MM) * MM; y0mm = Math.round(y0mm / MM) * MM;
+  x0mm = Math.max(0, Math.min(CASE_W - w, x0mm)); y0mm = Math.max(0, Math.min(CASE_H - h, y0mm));
+  const next = { ...p, x0: x0mm, x1: x0mm + w, y0: y0mm, y1: y0mm + h };
+  for (const k in S.parts) if (k !== key && overlaps(next, S.parts[k])) return false;
+  if (cell(next.x0) === cell(p.x0) && celly(next.y0) === celly(p.y0)) return false;
+  S.parts[key] = next;
+  return true;
+}
+cv.addEventListener('pointerdown', e => {
+  const { x, y } = localPos(e), h = hitTest(x, y);
+  if (!h || h.kind === 'fan') return;
+  e.preventDefault();
+  cv.setPointerCapture(e.pointerId);
+  if (h.kind === 'part') {
+    const p = S.parts[h.key];
+    drag = { kind: 'part', key: h.key, offx: (x - PAD) / px * MM - p.x0, offy: (y - PAD) / px * MM - p.y0, moved: false };
+  } else drag = { kind: 'rad', px: x, py: y, moved: false };
 });
-cv.addEventListener('mousemove', e => {
-  const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
-  cv.style.cursor = fans.some(f => { const q = fanRect(f); return x >= q.x - 8 && x <= q.x + q.w + 8 && y >= q.y - 8 && y <= q.y + q.h + 8; }) ? 'pointer' : 'default';
+cv.addEventListener('pointermove', e => {
+  const { x, y } = localPos(e);
+  if (!drag) {
+    const h = hitTest(x, y);
+    hover = h && h.kind === 'part' ? h.key : null;
+    cv.style.cursor = !h ? 'default' : h.kind === 'fan' ? 'pointer' : 'grab';
+    return;
+  }
+  cv.style.cursor = 'grabbing';
+  if (drag.kind === 'part') {
+    if (movePart(drag.key, (x - PAD) / px * MM - drag.offx, (y - PAD) / px * MM - drag.offy)) { drag.moved = true; rebuild(true); }
+  } else { drag.px = x; drag.py = y; drag.moved = true; }
+});
+function endDrag() {
+  if (!drag) return;
+  if (drag.kind === 'rad' && drag.moved && drag.px != null) {
+    const target = nearestRadWall(drag.px, drag.py);
+    if (target !== S.aio) S.aio = target;
+  }
+  justDragged = drag.moved;
+  drag = null; cv.style.cursor = 'default';
+  rebuild();
+}
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+cv.addEventListener('pointerleave', () => { if (!drag) hover = null; });
+// on touch screens, a finger that lands on a component drags it instead of scrolling the page
+cv.addEventListener('touchstart', e => {
+  const t = e.touches[0], r = cv.getBoundingClientRect(), h = hitTest(t.clientX - r.left, t.clientY - r.top);
+  if (h && h.kind !== 'fan') e.preventDefault();
+}, { passive: false });
+cv.addEventListener('touchmove', e => { if (drag) e.preventDefault(); }, { passive: false });
+cv.addEventListener('click', e => {
+  if (justDragged) { justDragged = false; return; }
+  const { x, y } = localPos(e), h = hitTest(x, y);
+  if (h && h.kind === 'fan') setFan(h.fan.zone, h.fan.i, NEXT[h.fan.mode]);
 });
 
 $('aio').addEventListener('change', e => { S.aio = e.target.value; rebuild(); });
 $('gpuW').addEventListener('input', e => { S.gpuW = +e.target.value; rebuild(); });
 $('cpuW').addEventListener('input', e => { S.cpuW = +e.target.value; rebuild(); });
-$('preset').addEventListener('change', e => { if (!e.target.value) return; S = PRESETS[e.target.value](); T.fill(0); rebuild(); e.target.value = ''; });
+$('preset').addEventListener('change', e => { if (!e.target.value) return; const keep = S.parts; S = PRESETS[e.target.value](); S.parts = keep; T.fill(0); rebuild(); e.target.value = ''; });
+$('resetParts').addEventListener('click', () => { S.parts = DEFAULT_PARTS(); rebuild(); });
 for (const [id, key] of [['tParticles', 'particles'], ['tHeat', 'heat'], ['tArrows', 'arrows'], ['tPause', 'paused']]) {
   $(id).addEventListener('click', () => { view[key] = !view[key]; $(id).setAttribute('aria-pressed', view[key]); });
 }
@@ -699,6 +803,6 @@ readColors(); resize(); rebuild();
 // warm the heat field so the first view is already near steady state
 for (let k = 0; k < 900; k++) stepHeat(1 / 60);
 requestAnimationFrame(frame);
-window.__bench = { get S() { return S; }, metrics: () => metrics, probe: () => ({ gpu: probe(PROBE.gpuIn), cpu: probe(PROBE.cpu), all: probe(PROBE.all) }), load: k => { S = PRESETS[k](); T.fill(0); rebuild(); for (let i = 0; i < 1500; i++) stepHeat(1 / 60); } };
+window.__bench = { get S() { return S; }, partRect: k => partRect(S.parts[k]), radRect: () => radRect(S.aio), fans: () => fans, metrics: () => metrics, probe: () => ({ gpu: probe(PROBE.gpuIn), cpu: probe(PROBE.cpu), all: probe(PROBE.all) }), load: k => { S = PRESETS[k](); T.fill(0); rebuild(); for (let i = 0; i < 1500; i++) stepHeat(1 / 60); } };
 </script>
 </body></html>
