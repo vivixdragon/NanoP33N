@@ -27,3 +27,17 @@ A Warcraft III–style maze tower defense game that runs in the browser. No buil
 | N | Send next wave early |
 | 1 / 2 / 3 | Game speed |
 | Del | Sell selected tower |
+
+---
+
+# Horde Command
+
+A small-horde, console-style RTS prototype in one file: `horde-command/index.html`. Open it in a browser and it runs. It works with keyboard + mouse, touch (phones and tablets, either orientation) and gamepads.
+
+- **Hordes:** up to 3 hordes of 10 goblin warriors that move and fight as groups, with waypoint queues.
+- **Possession:** take direct control of any unit or your titan. The rest of its horde follows you.
+- **Clans:** Stonebreakers, Emberkin and Stormcallers. Each has its own units, turret and titan, and a Crush / Pierce / Arcane vs Plate / Hide / Spirit armor triangle.
+- **Economy:** smash rocks, trees and crates for gold. Capture Soul Wells and kill enemies for souls.
+- **The match:** fog of war, a minimap, and an enemy AI that recruits, rebuilds, defends and raids. Destroy every enemy shrine to win.
+
+**Touch:** tap a horde button, then tap the ground to move or tap an enemy or rock to attack. Hold to queue a waypoint. Drag to pan and pinch to zoom. Double-tap one of your units (or press Possess) to take control: your left thumb moves it and ATTACK auto-aims.

@@ -1,0 +1,1922 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Horde Command</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Rubik:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+/* Layout: full-screen battlefield canvas with HUD clusters pinned to the four corners. */
+:root {
+  --bg: #121410;
+  --panel: rgba(22, 20, 16, 0.86);
+  --edge: #7a6338;
+  --gold: #ffcf4a;
+  --soul: #c58cff;
+  --ink: #efe6d2;
+  --dim: #a59a82;
+  --good: #5dff7a;
+  --bad: #ff4a4a;
+  --display: "Bungee", "Impact", "Arial Black", sans-serif;
+  --body: "Rubik", "Trebuchet MS", system-ui, sans-serif;
+  --btn: clamp(44px, 6.2vmin, 60px);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); font-family: var(--body);
+  user-select: none; -webkit-user-select: none; touch-action: none; overscroll-behavior: none; }
+#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+button { font-family: var(--body); color: var(--ink); touch-action: manipulation; }
+.hud { position: fixed; pointer-events: none; z-index: 2; }
+.hud > * { pointer-events: auto; }
+.panel { background: var(--panel); border: 2px solid var(--edge); border-radius: 10px; box-shadow: 0 4px 18px rgba(0,0,0,0.5); }
+
+/* top-left: resources + info */
+#tl { left: max(8px, env(safe-area-inset-left)); top: max(8px, env(safe-area-inset-top)); display: flex; flex-direction: column; gap: 6px; max-width: min(46vw, 420px); }
+#res { display: flex; gap: 14px; padding: 6px 12px; font-weight: 800; font-size: clamp(14px, 2.4vmin, 18px); align-items: center; }
+#res .g { color: var(--gold); } #res .s { color: var(--soul); }
+#res button { background: none; border: 0; font-size: 18px; padding: 0 2px; cursor: pointer; }
+#info { padding: 6px 10px; font-size: clamp(11px, 1.8vmin, 13px); color: var(--dim); line-height: 1.35; }
+#info b { color: var(--ink); }
+
+/* top-right: minimap */
+#tr { right: max(8px, env(safe-area-inset-right)); top: max(8px, env(safe-area-inset-top)); }
+#mini { display: block; width: clamp(140px, 22vmin, 220px); height: auto; border-radius: 8px; border: 2px solid var(--edge); background: #0a0c08; touch-action: none; }
+
+/* bottom-left: hordes + actions */
+#bl { left: max(8px, env(safe-area-inset-left)); bottom: max(8px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 6px; }
+.row { display: flex; gap: 6px; }
+.hbtn, .abtn, .rbtn, .tab, .big { border: 2px solid var(--edge); background: linear-gradient(#3b3326, #1d1913); border-radius: 9px; cursor: pointer; }
+.hbtn { width: calc(var(--btn) * 1.15); height: var(--btn); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2px; position: relative; }
+.hbtn .k { font-family: var(--display); font-size: clamp(14px, 2.6vmin, 20px); line-height: 1; }
+.hbtn .n { font-size: 11px; color: var(--dim); font-weight: 600; }
+.hbtn .dots { display: flex; gap: 2px; margin-top: 2px; height: 5px; }
+.hbtn .dots i { width: 5px; height: 5px; border-radius: 50%; }
+.hbtn.sel { border-color: var(--good); box-shadow: 0 0 10px rgba(93,255,122,0.5); }
+.hbtn.empty { opacity: 0.55; }
+.abtn { height: calc(var(--btn) * 0.8); padding: 0 10px; font-weight: 700; font-size: clamp(11px, 1.9vmin, 14px); }
+.abtn.on { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 8px rgba(255,207,74,0.45); }
+.abtn small, .rbtn small { color: var(--dim); font-weight: 400; }
+
+/* bottom-right: recruit + build */
+#br { right: max(8px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+#recruit { padding: 6px; display: flex; flex-direction: column; gap: 6px; max-width: min(56vw, 470px); }
+#recruit.collapsed .body { display: none; }
+.tabs { display: flex; gap: 4px; }
+.tab { flex: 1; padding: 5px 6px; font-weight: 800; font-size: clamp(10px, 1.8vmin, 13px); white-space: nowrap; }
+.tab.sel { color: #fff; }
+.tab .lock { font-weight: 400; color: var(--dim); }
+.body { display: flex; flex-wrap: wrap; gap: 5px; }
+.rbtn { width: calc(var(--btn) * 1.45); min-height: var(--btn); padding: 3px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; position: relative; line-height: 1.15; }
+.rbtn canvas { width: 26px; height: 26px; }
+.rbtn .nm { font-weight: 700; }
+.rbtn .c { color: var(--gold); font-weight: 700; } .rbtn .c b { color: var(--soul); }
+.rbtn .hk { position: absolute; left: 4px; top: 2px; font-size: 10px; color: var(--dim); }
+.rbtn.na { opacity: 0.45; }
+.rbtn.wide { width: auto; padding: 6px 12px; }
+#toggleRecruit { font-size: 12px; }
+
+/* touch-only possession controls */
+#pc { inset: 0; display: none; }
+body.touch.possessing #pc { display: block; }
+#pc .big { position: fixed; border-radius: 50%; width: calc(var(--btn) * 1.6); height: calc(var(--btn) * 1.6); font-family: var(--display); font-size: clamp(12px, 2.2vmin, 16px);
+  right: max(24px, env(safe-area-inset-right)); bottom: max(28px, env(safe-area-inset-bottom)); background: radial-gradient(#8a2a14, #3a1208); border-color: #ff9a5a; }
+#pc #spBtn { right: calc(max(24px, env(safe-area-inset-right)) + var(--btn) * 1.8); bottom: max(20px, env(safe-area-inset-bottom)); width: calc(var(--btn) * 1.15); height: calc(var(--btn) * 1.15); background: radial-gradient(#2a3a8a, #10183a); border-color: #8ab0ff; }
+#pc #exBtn { right: max(24px, env(safe-area-inset-right)); bottom: calc(max(28px, env(safe-area-inset-bottom)) + var(--btn) * 1.85); width: var(--btn); height: var(--btn); font-size: 11px; background: #2a2620; border-color: var(--edge); }
+#pc #flBtn { right: calc(max(24px, env(safe-area-inset-right)) + var(--btn) * 1.25); bottom: calc(max(28px, env(safe-area-inset-bottom)) + var(--btn) * 1.95); width: var(--btn); height: var(--btn); font-size: 10px; background: #2a2620; border-color: var(--edge); }
+#pc .big.down { filter: brightness(1.5); transform: scale(0.94); }
+body.possessing.touch #br, body.possessing.touch #bl { display: none; }
+body.touch .rbtn .hk, body.touch .abtn small.key { display: none; }
+#stickHint { position: fixed; left: max(20px, env(safe-area-inset-left)); bottom: max(20px, env(safe-area-inset-bottom)); color: var(--dim); font-size: 12px; pointer-events: none; }
+
+#toasts { left: 50%; top: max(10px, env(safe-area-inset-top)); transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 3px; pointer-events: none; width: min(90vw, 560px); }
+.toast { font-weight: 800; font-size: clamp(12px, 2.2vmin, 16px); text-shadow: 0 1px 3px #000, 0 0 6px #000; text-align: center; transition: opacity 0.8s; }
+.toast.fade { opacity: 0; }
+
+#modal { position: fixed; inset: 0; z-index: 5; background: rgba(6, 6, 4, 0.72); display: flex; align-items: center; justify-content: center;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+#modal[hidden] { display: none; }
+#modal .card { max-width: 760px; width: 100%; max-height: 100%; overflow: auto; padding: 18px 22px; text-align: center; }
+#modal h1 { font-family: var(--display); font-size: clamp(30px, 7vmin, 60px); margin: 4px 0; color: var(--gold); text-shadow: 3px 3px 0 #5a2a08; letter-spacing: 1px; }
+#modal h2 { font-family: var(--display); margin: 4px 0 10px; }
+#modal p { color: var(--dim); margin: 6px 0; }
+.ctl { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; text-align: left; margin: 12px 0; font-size: 13px; }
+.ctl div { background: rgba(0,0,0,0.3); border: 1px solid #4a3e28; border-radius: 8px; padding: 8px 10px; line-height: 1.45; }
+.ctl h3 { margin: 0 0 4px; font-size: 14px; color: var(--gold); }
+.go { font-family: var(--display); font-size: 20px; padding: 12px 30px; border-radius: 10px; border: 2px solid var(--gold); background: linear-gradient(#a0561a, #5a2a08); cursor: pointer; margin: 6px; }
+.go.alt { font-size: 15px; padding: 9px 20px; border-color: var(--edge); background: linear-gradient(#3b3326, #1d1913); }
+button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+/* phones held upright: recruit panel stacks above the horde buttons, full width */
+@media (max-width: 640px) and (orientation: portrait) {
+  #info .hint { display: none; }
+  #br { left: max(8px, env(safe-area-inset-left)); bottom: calc(max(8px, env(safe-area-inset-bottom)) + var(--btn) * 1.8 + 14px); align-items: stretch; }
+  #recruit { max-width: none; }
+  .rbtn { flex: 1 1 calc(25% - 5px); width: auto; }
+  #tl { max-width: calc(100vw - 170px); }
+  #mini { width: 140px; }
+  .abtn { padding: 0 7px; }
+}
+@media (max-height: 460px) {
+  #info { display: none; }
+  .rbtn { width: calc(var(--btn) * 1.25); font-size: 10px; }
+}
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div class="hud" id="tl">
+  <div class="panel" id="res"><span class="g">● <span id="gold">0</span></span><span class="s">✦ <span id="souls">0</span></span><span id="clock" style="color:var(--dim);font-weight:600">0:00</span><button id="pauseBtn" title="Pause (Esc)" aria-label="Pause">⏸</button></div>
+  <div class="panel" id="info"></div>
+</div>
+<div class="hud" id="tr"><canvas id="mini" width="320" height="200" aria-label="Minimap"></canvas></div>
+<div class="hud" id="bl">
+  <div class="row acts2">
+    <button class="abtn" id="possBtn">Possess <small class="key">E</small></button>
+    <button class="abtn" id="queueBtn">Waypoints <small>Shift</small></button>
+    <button class="abtn" id="centerBtn">Find <small class="key">Space</small></button>
+  </div>
+  <div class="row" id="hordeRow"></div>
+</div>
+<div class="hud" id="br">
+  <div class="panel" id="recruit">
+    <div class="row"><div class="tabs" id="tabs" style="flex:1"></div><button class="tab" id="toggleRecruit" aria-label="Collapse recruit panel" style="flex:0 0 auto">▾</button></div>
+    <div class="body" id="rbody"></div>
+  </div>
+</div>
+<div class="hud" id="pc">
+  <button class="big" id="atkBtn">ATTACK</button>
+  <button class="big" id="spBtn">SLAM</button>
+  <button class="big" id="exBtn">EXIT</button>
+  <button class="big" id="flBtn">FOLLOW</button>
+  <div id="stickHint">Drag here to move</div>
+</div>
+<div class="hud" id="toasts"></div>
+<div id="modal" hidden><div class="card panel" id="mcard"></div></div>
+
+<script>
+'use strict';
+/* ==========================================================================
+   HORDE COMMAND — a small-horde, console-style RTS prototype
+   --------------------------------------------------------------------------
+   Everything lives in this one file. Sections:
+     1. DATA      clans, units, turrets, titans, armor table
+     2. STATE     newGame(), map generation
+     3. SIM       units, hordes, combat, wells, fog, enemy AI
+     4. INPUT     keyboard+mouse, touch (tap/drag/pinch/joystick), gamepad
+     5. RENDER    procedural art, fog, minimap
+     6. UI        HUD buttons, recruit panel, modals
+
+   HOW TO EXPAND
+   - New clan: add an entry to CLANS, its units to UNITS, a TURRETS and
+     TITANS entry, and a shrine plot for each side in makeMap(). The UI
+     builds tabs and buttons from CLANS automatically.
+   - Upgrades: add e.g. G.upg[team][clan] = {dmg:1, hp:1} and multiply in
+     stat() / spawnUnit(); expose a button per clan in renderRecruit().
+   - Campaign missions: make makeMap() data-driven (props, wells, plots,
+     starting hordes, enemy budget) and add objectives to checkEnd().
+   - New unit behaviours: add a flag to a UNITS entry (like heal / aura /
+     chain / splash) and handle it in updUnit() or doAttack().
+   ========================================================================== */
+
+// ---------------------------------------------------------------- 1. DATA
+const WORLD_W = 3200, WORLD_H = 2000;
+const P = 0, E = 1;                       // teams: player, enemy
+const TEAM_COL = ['#5dff7a', '#ff4a4a'];
+const HORDE_CAP = 10, LEASH = 340;
+
+// Rock-paper-scissors: Crush beats Plate, Pierce beats Hide, Arcane beats Spirit.
+const ARMOR = {
+  crush:  { hide: 1.0, plate: 1.5, spirit: 0.6, fort: 1.5 },
+  pierce: { hide: 1.5, plate: 0.55, spirit: 1.0, fort: 0.4 },
+  arcane: { hide: 0.75, plate: 1.1, spirit: 1.6, fort: 0.8 },
+};
+const ARMOR_NAME = { hide: 'Hide', plate: 'Plate', spirit: 'Spirit', fort: 'Fortified' };
+const DT_NAME = { crush: 'Crush', pierce: 'Pierce', arcane: 'Arcane' };
+
+const CLANS = {
+  stone: { name: 'Stonebreakers', color: '#b39a72', dark: '#5e4e38', units: ['miner', 'thrower', 'heavy', 'mender'], turret: 'catapult', titan: 'colossus', cost: { g: 0, s: 0 },
+           blurb: 'Crush damage, Plate armor. Great at smashing props and buildings.' },
+  ember: { name: 'Emberkin', color: '#ee6a3a', dark: '#7a2a14', units: ['brawler', 'archer', 'bombard', 'scout'], turret: 'flamer', titan: 'cinder', cost: { g: 200, s: 10 },
+           blurb: 'Pierce damage, Hide armor. Long-range firepower.' },
+  storm: { name: 'Stormcallers', color: '#58a8f5', dark: '#1c3e6a', units: ['warder', 'caster', 'aegis'], turret: 'tesla', titan: 'tempest', cost: { g: 250, s: 15 },
+           blurb: 'Arcane damage, Spirit armor. Chain lightning and protective wards.' },
+};
+
+const UNITS = {
+  miner:   { clan: 'stone', name: 'Miner',        hp: 60,  armor: 'plate',  dmg: 8,  dt: 'crush',  range: 20,  rate: 0.9, speed: 82,  g: 20, s: 0, r: 9,  propMul: 3, desc: 'Cheap melee. Smashes props 3x faster and gathers gold on its own when idle.' },
+  thrower: { clan: 'stone', name: 'Rock Thrower', hp: 50,  armor: 'plate',  dmg: 12, dt: 'crush',  range: 150, rate: 1.4, speed: 75,  g: 35, s: 0, r: 9,  proj: 'rock', desc: 'Short-range rock lobber.' },
+  heavy:   { clan: 'stone', name: 'Heavy',        hp: 210, armor: 'plate',  dmg: 18, dt: 'crush',  range: 22,  rate: 1.3, speed: 58,  g: 60, s: 2, r: 13, desc: 'Slow, tough frontliner.' },
+  mender:  { clan: 'stone', name: 'Mender',       hp: 60,  armor: 'plate',  dmg: 4,  dt: 'crush',  range: 20,  rate: 1.2, speed: 72,  g: 45, s: 3, r: 9,  heal: 10, desc: 'Heals the most wounded ally nearby.' },
+  brawler: { clan: 'ember', name: 'Brawler',      hp: 72,  armor: 'hide',   dmg: 11, dt: 'pierce', range: 20,  rate: 0.8, speed: 90,  g: 25, s: 0, r: 9,  desc: 'Fast-hitting melee.' },
+  archer:  { clan: 'ember', name: 'Archer',       hp: 45,  armor: 'hide',   dmg: 11, dt: 'pierce', range: 235, rate: 1.1, speed: 85,  g: 35, s: 0, r: 8,  proj: 'arrow', desc: 'Long-range shooter.' },
+  bombard: { clan: 'ember', name: 'Bombardier',   hp: 50,  armor: 'hide',   dmg: 22, dt: 'crush',  range: 190, rate: 2.2, speed: 72,  g: 55, s: 2, r: 9,  proj: 'bomb', splash: 55, desc: 'Lobs bombs that hit an area.' },
+  scout:   { clan: 'ember', name: 'Scout',        hp: 40,  armor: 'hide',   dmg: 6,  dt: 'pierce', range: 20,  rate: 0.7, speed: 150, g: 20, s: 0, r: 8,  vision: 380, desc: 'Very fast, sees far through the fog.' },
+  warder:  { clan: 'storm', name: 'Warder',       hp: 95,  armor: 'spirit', dmg: 10, dt: 'arcane', range: 22,  rate: 0.9, speed: 80,  g: 30, s: 0, r: 10, desc: 'Sturdy melee guard.' },
+  caster:  { clan: 'storm', name: 'Lightning Caster', hp: 45, armor: 'spirit', dmg: 14, dt: 'arcane', range: 180, rate: 1.6, speed: 76, g: 45, s: 2, r: 9, chain: 3, desc: 'Chain lightning hits 3 enemies.' },
+  aegis:   { clan: 'storm', name: 'Aegis',        hp: 75,  armor: 'spirit', dmg: 5,  dt: 'arcane', range: 22,  rate: 1.0, speed: 75,  g: 50, s: 3, r: 10, aura: 0.35, desc: 'Allies nearby take 35% less damage.' },
+};
+const TITANS = {
+  colossus: { clan: 'stone', name: 'Stone Colossus', hp: 1700, armor: 'plate',  dmg: 55, dt: 'crush',  range: 42,  rate: 1.5, speed: 58, r: 26, splash: 60, special: 'slam',    spName: 'SLAM',    spCd: 8,  desc: 'Sweeping blows. Special: ground slam stuns everything nearby.' },
+  cinder:   { clan: 'ember', name: 'Cinder Engine',  hp: 1250, armor: 'hide',   dmg: 45, dt: 'crush',  range: 300, rate: 2.0, speed: 52, r: 24, proj: 'bomb', splash: 75, special: 'barrage', spName: 'BARRAGE', spCd: 10, desc: 'Walking artillery. Special: rain of bombs on the aim point.' },
+  tempest:  { clan: 'storm', name: 'Tempest',        hp: 1350, armor: 'spirit', dmg: 38, dt: 'arcane', range: 210, rate: 1.3, speed: 62, r: 24, chain: 5, special: 'nova', spName: 'NOVA', spCd: 9, desc: 'Lightning chains through 5. Special: storm nova slows and shocks.' },
+};
+const TITAN_COST = { g: 400, s: 60 };
+const TURRETS = {
+  catapult: { clan: 'stone', name: 'Boulder Catapult', hp: 520, dmg: 30, dt: 'crush',  range: 250, rate: 2.4, proj: 'rock', splash: 55 },
+  flamer:   { clan: 'ember', name: 'Flame Spitter',    hp: 480, dmg: 9,  dt: 'pierce', range: 195, rate: 0.35, proj: 'fire' },
+  tesla:    { clan: 'storm', name: 'Storm Coil',       hp: 500, dmg: 22, dt: 'arcane', range: 205, rate: 1.5, chain: 3 },
+};
+const TURRET_COST = { g: 120, s: 5 }, TURRET_MAX = 6, BUILD_RADIUS = 380;
+
+// ---------------------------------------------------------------- 2. STATE
+let G = null, uid = 1;
+const rand = (a, b) => a + Math.random() * (b - a);
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+function mkHordes() { return [0, 1, 2, 3].map(i => ({ i, units: [], pt: null, queue: [], target: null, follow: true, state: 'gather' })); }
+
+function newGame() {
+  G = {
+    t: 0, gold: [180, 180], souls: [0, 0], goldFrac: [0, 0],
+    units: [], blds: [], props: [], wells: [], projs: [], fx: [], texts: [],
+    hordes: [mkHordes(), mkHordes()], sel: 0, poss: null,
+    cam: { x: 0, y: 0, z: 1 }, paused: false, over: false, place: null, queueMode: false, tab: 'stone',
+    ai: { think: 0, wave: 0 }, stats: { kills: 0, lost: 0, gold: 0 },
+    fogW: 64, fogH: 40, fogT: 0,
+  };
+  G.vis = new Uint8Array(G.fogW * G.fogH); G.seen = new Uint8Array(G.fogW * G.fogH);
+  makeMap();
+  // starting hordes
+  const sp = G.blds.find(b => b.team === P && b.type === 'shrine' && b.clan === 'stone');
+  for (const t of ['miner', 'miner', 'miner', 'miner', 'thrower', 'thrower']) spawnUnit(P, t, 0, sp);
+  const es = G.blds.find(b => b.team === E && b.type === 'shrine' && b.clan === 'ember');
+  for (const t of ['brawler', 'brawler', 'brawler', 'archer', 'archer']) spawnUnit(E, t, 0, es);
+  G.hordes[P][0].pt = { x: 560, y: 1560 };
+  G.hordes[E][0].pt = { x: WORLD_W - 560, y: WORLD_H - 1560 };
+  centerOn(G.hordes[P][0].pt);
+  ground = null;
+}
+
+function makeMap() {
+  const r = mulberry32((Math.random() * 1e9) | 0);
+  const mirror = (x, y) => ({ x: WORLD_W - x, y: WORLD_H - y });
+  const base = [
+    { type: 'hall', x: 300, y: 1690 },
+    { type: 'shrine', clan: 'stone', x: 560, y: 1760 },
+    { type: 'shrine', clan: 'ember', x: 250, y: 1430 },
+    { type: 'shrine', clan: 'storm', x: 530, y: 1500 },
+  ];
+  for (const team of [P, E]) {
+    for (const b of base) {
+      const pos = team === P ? b : { ...b, ...mirror(b.x, b.y) };
+      const startClan = team === P ? 'stone' : 'ember';
+      const built = b.type === 'hall' || b.clan === startClan;
+      addBld({ type: b.type, clan: b.clan, team, x: pos.x, y: pos.y, built });
+    }
+  }
+  G.wells = [
+    { x: 1150, y: 640, owner: -1, prog: 0, tick: 0, r: 34 },
+    { x: WORLD_W - 1150, y: WORLD_H - 640, owner: -1, prog: 0, tick: 0, r: 34 },
+  ];
+  // destructible props in clusters, kept clear of bases, wells and the main road
+  const clear = (x, y, rad) => {
+    for (const b of G.blds) if (Math.hypot(b.x - x, b.y - y) < 330 + rad) return false;
+    for (const w of G.wells) if (Math.hypot(w.x - x, w.y - y) < 120 + rad) return false;
+    for (const p of G.props) if (Math.hypot(p.x - x, p.y - y) < p.r + rad + 14) return false;
+    // keep a corridor along the diagonal road open
+    const t = clamp(((x - 300) * 2600 + (y - 1700) * -1400) / (2600 * 2600 + 1400 * 1400), 0, 1);
+    if (Math.hypot(x - (300 + 2600 * t), y - (1700 - 1400 * t)) < 70 + rad) return false;
+    return true;
+  };
+  const addProp = (kind, x, y) => {
+    const def = { tree: { r: 20, hp: 70, gold: 14 }, rock: { r: 22, hp: 130, gold: 28 }, crate: { r: 13, hp: 40, gold: 32 } }[kind];
+    const rr = def.r * (0.85 + r() * 0.3);
+    if (x < 40 || y < 40 || x > WORLD_W - 40 || y > WORLD_H - 40 || !clear(x, y, rr)) return;
+    G.props.push({ id: uid++, kind: 'prop', type: kind, x, y, r: rr, hp: def.hp, max: def.hp, gold: def.gold, seed: r(), hitT: 0 });
+  };
+  for (let c = 0; c < 34; c++) {
+    let cx = 150 + r() * (WORLD_W / 2 - 150), cy = 150 + r() * (WORLD_H - 300);
+    const kind = r() < 0.6 ? 'tree' : 'rock';
+    for (const half of [0, 1]) {
+      const n = 4 + Math.floor(r() * 6);
+      const rs = mulberry32(c * 977 + 5);
+      for (let i = 0; i < n; i++) {
+        const a = rs() * Math.PI * 2, d = rs() * 90;
+        let x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d;
+        if (half) ({ x, y } = mirror(x, y));
+        addProp(kind, x, y);
+      }
+    }
+  }
+  for (let i = 0; i < 14; i++) { const x = 400 + r() * (WORLD_W / 2 - 400), y = 200 + r() * (WORLD_H - 400); addProp('crate', x, y); const m = mirror(x, y); addProp('crate', m.x, m.y); }
+}
+
+function addBld(o) {
+  const isHall = o.type === 'hall', isTur = o.type === 'turret';
+  const max = isHall ? 2600 : isTur ? TURRETS[o.tur].hp : 1600;
+  const b = { id: uid++, kind: 'bld', armor: 'fort', r: isHall ? 46 : isTur ? 20 : 34, hp: o.built ? max : 0, max, cd: 0, ang: 0, buildT: o.built ? 1 : 0, hitT: 0, ...o };
+  G.blds.push(b);
+  return b;
+}
+
+function stat(e) { return e.titan ? TITANS[e.type] : e.kind === 'bld' && e.type === 'turret' ? TURRETS[e.tur] : UNITS[e.type]; }
+function alive(e) {
+  if (!e) return false;
+  if (e.kind === 'unit') return !e.dead;
+  if (e.kind === 'bld') return e.built && e.hp > 0 && !e.dead;
+  if (e.kind === 'prop') return e.hp > 0;
+  return false;
+}
+
+function spawnUnit(team, type, hordeIdx, at, titan = false) {
+  const S = titan ? TITANS[type] : UNITS[type];
+  const a = Math.random() * Math.PI * 2;
+  const u = {
+    id: uid++, kind: 'unit', type, team, titan, S, x: at.x + Math.cos(a) * (at.r + 18), y: at.y + Math.sin(a) * (at.r + 18), vx: 0, vy: 0,
+    hp: S.hp, max: S.hp, r: S.r, armor: S.armor, horde: hordeIdx, cd: Math.random() * 0.5, ang: a, tgt: null, scan: 0,
+    slowT: 0, stunT: 0, hitT: 0, atkT: 0, healCd: 1, spCd: 0, stuck: 0, wob: Math.random() * 10,
+  };
+  G.units.push(u);
+  G.hordes[team][hordeIdx].units.push(u);
+  return u;
+}
+
+// formation slot i around the horde anchor (sunflower spiral packs 10 nicely)
+function formOff(i, big) { if (big) return { x: 0, y: 0 }; const rr = 21 * Math.sqrt(i); const a = i * 2.39996; return { x: Math.cos(a) * rr, y: Math.sin(a) * rr }; }
+
+// ---- navigation: 40px grid of blocked cells + cached flow fields (BFS distance to a destination)
+const NC = 40, NW = WORLD_W / NC, NH = WORLD_H / NC;
+function buildNav() {
+  const nav = new Uint8Array(NW * NH);
+  const block = (x, y, r) => {
+    const x0 = Math.max(0, Math.floor((x - r) / NC)), x1 = Math.min(NW - 1, Math.floor((x + r) / NC));
+    const y0 = Math.max(0, Math.floor((y - r) / NC)), y1 = Math.min(NH - 1, Math.floor((y + r) / NC));
+    for (let j = y0; j <= y1; j++) for (let i = x0; i <= x1; i++) if (Math.hypot((i + 0.5) * NC - x, (j + 0.5) * NC - y) < r) nav[j * NW + i] = 1;
+  };
+  for (const p of G.props) if (p.hp > 0) block(p.x, p.y, p.r + 12);
+  for (const b of G.blds) if (b.built) block(b.x, b.y, b.r + 8);
+  G.nav = nav; G.flow = new Map(); G.navDirty = false;
+}
+const cellOf = (x, y) => clamp(Math.floor(y / NC), 0, NH - 1) * NW + clamp(Math.floor(x / NC), 0, NW - 1);
+function flowTo(x, y) {
+  const c = cellOf(x, y);
+  let f = G.flow.get(c);
+  if (f) return f;
+  if (G.flow.size > 48) G.flow.clear();
+  f = new Float32Array(NW * NH).fill(Infinity);
+  // Dijkstra-lite: bucketed queue is overkill at this size; a simple repeated-relaxation BFS is fine
+  const q = []; f[c] = 0; q.push(c);
+  const nav = G.nav;
+  for (let h = 0; h < q.length; h++) {
+    const i = q[h], cx = i % NW, cy = (i / NW) | 0, d = f[i];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= NW || ny >= NH) continue;
+      const j = ny * NW + nx; if (nav[j]) continue;
+      if (dx && dy && (nav[cy * NW + nx] || nav[ny * NW + cx])) continue; // no corner cutting
+      const nd = d + (dx && dy ? 1.414 : 1);
+      if (nd < f[j] - 1e-6) { f[j] = nd; q.push(j); }
+    }
+  }
+  G.flow.set(c, f);
+  return f;
+}
+function losClear(x0, y0, x1, y1) {
+  const L = Math.hypot(x1 - x0, y1 - y0), n = Math.ceil(L / 16);
+  for (let k = 1; k < n; k++) { const x = x0 + (x1 - x0) * k / n, y = y0 + (y1 - y0) * k / n; if (G.nav[cellOf(x, y)]) return false; }
+  return true;
+}
+function downhill(f, ci) {
+  const cx = ci % NW, cy = (ci / NW) | 0; let best = ci, bv = f[ci];
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= NW || ny >= NH) continue;
+    const j = ny * NW + nx; if (G.nav[j] || (dx && dy && (G.nav[cy * NW + nx] || G.nav[ny * NW + cx]))) continue;
+    if (f[j] < bv) { bv = f[j]; best = j; }
+  }
+  return best;
+}
+// Where should unit u head next to reach (gx, gy)? Straight if the line is clear, else downhill on the flow field.
+function navStep(u, gx, gy) {
+  u.navT = (u.navT || 0) - 1;
+  if (u.navT > 0 && u.navGoal && Math.abs(u.navGoal.gx - gx) < 30 && Math.abs(u.navGoal.gy - gy) < 30) return u.navGoal;
+  u.navT = 8; // re-plan every ~8 frames
+  if (losClear(u.x, u.y, gx, gy)) { u.navGoal = { x: gx, y: gy, gx, gy }; return u.navGoal; }
+  const f = flowTo(gx, gy), ci = cellOf(u.x, u.y);
+  let cur = downhill(f, ci);
+  if (cur === ci) { u.navGoal = { x: gx, y: gy, gx, gy }; return u.navGoal; }
+  // look a few cells further down the field for a smoother line
+  for (let k = 0; k < 4; k++) {
+    const nb = downhill(f, cur);
+    if (nb === cur || !losClear(u.x, u.y, (nb % NW + 0.5) * NC, (((nb / NW) | 0) + 0.5) * NC)) break;
+    cur = nb;
+  }
+  u.navGoal = { x: (cur % NW + 0.5) * NC, y: (((cur / NW) | 0) + 0.5) * NC, gx, gy };
+  return u.navGoal;
+}
+
+function hordeCentroid(h) {
+  if (!h.units.length) return null;
+  let x = 0, y = 0; for (const u of h.units) { x += u.x; y += u.y; }
+  return { x: x / h.units.length, y: y / h.units.length };
+}
+
+// ---------------------------------------------------------------- economy / orders
+function canPay(team, g, s) { return G.gold[team] >= g && G.souls[team] >= s; }
+function pay(team, g, s) { G.gold[team] -= g; G.souls[team] -= s; }
+
+function ownedShrine(team, clan) { return G.blds.find(b => b.team === team && b.type === 'shrine' && b.clan === clan && alive(b) && b.buildT >= 1); }
+
+function recruit(team, type, prefer) {
+  const S = UNITS[type];
+  const shrine = ownedShrine(team, S.clan);
+  if (!shrine) { if (team === P) toast(`Build the ${CLANS[S.clan].name} shrine first.`, 'var(--bad)'); return false; }
+  const hs = G.hordes[team];
+  const order = prefer != null ? [prefer, 0, 1, 2] : [0, 1, 2];
+  const h = order.map(i => hs[i]).find(h => h.i < 3 && h.units.length < HORDE_CAP);
+  if (!h) { if (team === P) toast('All three hordes are full (10 each).', 'var(--bad)'); return false; }
+  if (!canPay(team, S.g, S.s)) { if (team === P) toast(S.s && G.souls[team] < S.s ? 'Not enough souls.' : 'Not enough gold.', 'var(--bad)'); return false; }
+  pay(team, S.g, S.s);
+  const u = spawnUnit(team, type, h.i, shrine);
+  if (!h.pt) h.pt = { x: shrine.x + (team === P ? 110 : -110), y: shrine.y + (team === P ? -110 : 110) };
+  if (team === P) { toast(`${S.name} joined Horde ${h.i + 1}`, CLANS[S.clan].color); fxRing(u.x, u.y, 4, 30, '255,230,150', 0.4); }
+  return true;
+}
+
+function buildShrine(team, clan) {
+  const b = G.blds.find(x => x.team === team && x.type === 'shrine' && x.clan === clan);
+  if (!b || b.built) return false;
+  const c = CLANS[clan].cost, rebuild = b.everBuilt;
+  const g = rebuild ? Math.max(300, c.g + 100) : c.g, s = rebuild ? Math.max(20, c.s + 5) : c.s;
+  if (!canPay(team, g, s)) { if (team === P) toast(`Need ${g} gold and ${s} souls.`, 'var(--bad)'); return false; }
+  pay(team, g, s);
+  b.built = true; b.buildT = 0.01; b.hp = b.max * 0.1; b.dead = false; G.navDirty = true;
+  if (team === P) toast(`${CLANS[clan].name} shrine under construction…`, CLANS[clan].color);
+  return true;
+}
+function shrineCost(team, clan) {
+  const b = G.blds.find(x => x.team === team && x.type === 'shrine' && x.clan === clan);
+  const c = CLANS[clan].cost;
+  return b && b.everBuilt ? { g: Math.max(300, c.g + 100), s: Math.max(20, c.s + 5) } : c;
+}
+
+function hall(team) { return G.blds.find(b => b.team === team && b.type === 'hall' && alive(b)); }
+
+function buildTitan(team, clan) {
+  const hl = hall(team);
+  if (!hl) { if (team === P) toast('Your Hall of Titans is destroyed.', 'var(--bad)'); return false; }
+  if (G.hordes[team][3].units.length) { if (team === P) toast('Only one titan may walk at a time.', 'var(--bad)'); return false; }
+  if (!ownedShrine(team, clan)) { if (team === P) toast(`Requires the ${CLANS[clan].name} shrine.`, 'var(--bad)'); return false; }
+  if (!canPay(team, TITAN_COST.g, TITAN_COST.s)) { if (team === P) toast(`A titan needs ${TITAN_COST.g} gold and ${TITAN_COST.s} souls.`, 'var(--bad)'); return false; }
+  pay(team, TITAN_COST.g, TITAN_COST.s);
+  const u = spawnUnit(team, CLANS[clan].titan, 3, hl, true);
+  G.hordes[team][3].pt = { x: u.x, y: u.y };
+  shake(10); fxRing(u.x, u.y, 10, 120, '255,200,120', 0.7);
+  if (team === P) { toast(`${TITANS[u.type].name} awakens! Select it with 4 / the T button.`, 'var(--gold)'); }
+  else toast(`An enemy titan has awakened!`, 'var(--bad)');
+  return true;
+}
+
+function turretSpotOk(team, x, y) {
+  if (x < 30 || y < 30 || x > WORLD_W - 30 || y > WORLD_H - 30) return false;
+  const anchor = G.blds.some(b => b.team === team && alive(b) && b.type !== 'turret' && Math.hypot(b.x - x, b.y - y) < BUILD_RADIUS);
+  if (!anchor) return false;
+  for (const b of G.blds) if ((b.built || b.type === 'shrine') && Math.hypot(b.x - x, b.y - y) < b.r + 24) return false;
+  for (const p of G.props) if (p.hp > 0 && Math.hypot(p.x - x, p.y - y) < p.r + 22) return false;
+  return true;
+}
+function placeTurret(team, clan, x, y) {
+  const n = G.blds.filter(b => b.team === team && b.type === 'turret' && alive(b)).length;
+  if (n >= TURRET_MAX) { if (team === P) toast(`Turret limit reached (${TURRET_MAX}).`, 'var(--bad)'); return false; }
+  if (!ownedShrine(team, clan)) { if (team === P) toast(`Requires the ${CLANS[clan].name} shrine.`, 'var(--bad)'); return false; }
+  if (!turretSpotOk(team, x, y)) { if (team === P) toast('Turrets go near your Hall or shrines, on open ground.', 'var(--bad)'); return false; }
+  if (!canPay(team, TURRET_COST.g, TURRET_COST.s)) { if (team === P) toast(`Need ${TURRET_COST.g} gold and ${TURRET_COST.s} souls.`, 'var(--bad)'); return false; }
+  pay(team, TURRET_COST.g, TURRET_COST.s);
+  const b = addBld({ type: 'turret', tur: CLANS[clan].turret, clan, team, x, y, built: true }); G.navDirty = true;
+  b.buildT = 0.01; b.hp = b.max * 0.2;
+  return true;
+}
+
+// Issue an order to a horde. `target` may be an enemy unit/building or a prop to smash.
+function orderHorde(team, hi, x, y, target, queue) {
+  const h = G.hordes[team][hi];
+  if (!h.units.length) return;
+  if (queue && (h.pt || h.queue.length)) { h.queue.push({ x, y }); }
+  else { h.pt = { x, y }; h.queue = []; h.target = target || null; for (const u of h.units) { u.tgt = target || null; u.scan = 0; } }
+  if (team === P) {
+    const col = target ? (target.kind === 'prop' ? '255,207,74' : '255,80,80') : '93,255,122';
+    fxRing(x, y, 22, 4, col, 0.35);
+  }
+}
+
+// ---------------------------------------------------------------- 3. SIM
+function update(dt) {
+  G.t += dt;
+  if (!G.nav || G.navDirty) buildNav();
+  // passive income: Hall +1 gold/s; enemy gets an extra trickle that ramps up (its stand-in for gathering)
+  for (const team of [P, E]) if (hall(team)) G.gold[team] += dt * 1;
+  G.gold[E] += dt * (1.6 + G.t / 200);
+
+  for (const team of [P, E]) for (const h of G.hordes[team]) {
+    h.units = h.units.filter(u => !u.dead);
+    if (h.target && !alive(h.target)) h.target = null;
+    if (h.queue.length && h.pt) {
+      const c = hordeCentroid(h);
+      if (c && Math.hypot(c.x - h.pt.x, c.y - h.pt.y) < 60) h.pt = h.queue.shift();
+    }
+  }
+  for (const u of G.units) if (!u.dead) updUnit(u, dt);
+  for (const b of G.blds) updBld(b, dt);
+  updWells(dt);
+  updProjs(dt);
+  G.units = G.units.filter(u => !u.dead);
+  G.blds = G.blds.filter(b => !(b.type === 'turret' && b.dead));
+  for (const f of G.fx) f.t += dt;
+  G.fx = G.fx.filter(f => f.t < f.life);
+  for (const t of G.texts) { t.t += dt; t.y -= 24 * dt; }
+  G.texts = G.texts.filter(t => t.t < 1.1);
+  for (const p of G.props) if (p.hitT > 0) p.hitT -= dt;
+  if (G.shake > 0) G.shake = Math.max(0, G.shake - dt * 30);
+  // crate respawn keeps the gold economy alive
+  G.crateT = (G.crateT || 0) + dt;
+  if (G.crateT > 25) { G.crateT = 0; spawnCrate(); }
+  G.fogT -= dt; if (G.fogT <= 0) { G.fogT = 0.15; updFog(); }
+  aiThink(dt);
+  G.endT = (G.endT || 0) - dt; if (G.endT <= 0) { G.endT = 0.5; checkEnd(); }
+}
+
+function spawnCrate() {
+  for (let i = 0; i < 20; i++) {
+    const x = rand(300, WORLD_W - 300), y = rand(200, WORLD_H - 200);
+    if (G.props.some(p => p.hp > 0 && Math.hypot(p.x - x, p.y - y) < p.r + 40)) continue;
+    if (G.blds.some(b => Math.hypot(b.x - x, b.y - y) < 260)) continue;
+    G.props.push({ id: uid++, kind: 'prop', type: 'crate', x, y, r: 13, hp: 40, max: 40, gold: 32, seed: Math.random(), hitT: 0 });
+    G.navDirty = true;
+    return;
+  }
+}
+
+function enemiesOf(team) { return team === P ? E : P; }
+
+function nearestEnemy(u, range, anchor, leash) {
+  let best = null, bd = range;
+  const foe = enemiesOf(u.team);
+  for (const o of G.units) {
+    if (o.dead || o.team !== foe) continue;
+    const d = dist(u, o) - o.r;
+    if (d < bd && (!anchor || dist(o, anchor) < leash || d < 150)) { bd = d; best = o; }
+  }
+  for (const b of G.blds) {
+    if (b.team !== foe || !alive(b)) continue;
+    const d = dist(u, b) - b.r;
+    if (d < bd && (!anchor || dist(b, anchor) < leash)) { bd = d; best = b; }
+  }
+  return best;
+}
+function nearestProp(at, range) {
+  let best = null, bd = range;
+  for (const p of G.props) { if (p.hp <= 0) continue; const d = dist(at, p); if (d < bd) { bd = d; best = p; } }
+  return best;
+}
+
+function updUnit(u, dt) {
+  const S = u.S;
+  if (u.hitT > 0) u.hitT -= dt;
+  if (u.atkT > 0) u.atkT -= dt;
+  if (u.spCd > 0) u.spCd -= dt;
+  u.cd -= dt;
+  if (u.slowT > 0) u.slowT -= dt;
+  if (u.stunT > 0) { u.stunT -= dt; u.vx = u.vy = 0; return; }
+  if (u === G.poss) return updPossessed(u, dt);
+  const h = G.hordes[u.team][u.horde];
+  let anchor = h.pt || { x: u.x, y: u.y };
+  if (G.poss && G.poss.team === u.team && G.poss.horde === u.horde && h.follow) anchor = G.poss;
+  const idx = h.units.indexOf(u);
+  const off = formOff(G.poss && anchor === G.poss ? idx + 1 : idx, u.titan);
+  const gx = anchor.x + off.x, gy = anchor.y + off.y;
+  const spd = S.speed * (u.slowT > 0 ? 0.5 : 1);
+
+  if (S.heal) {
+    u.healCd -= dt;
+    if (u.healCd <= 0) {
+      u.healCd = 1;
+      let w = null, wf = 0.98;
+      for (const o of G.units) if (!o.dead && o.team === u.team && dist(o, u) < 120 && o.hp / o.max < wf) { wf = o.hp / o.max; w = o; }
+      if (w) { w.hp = Math.min(w.max, w.hp + S.heal); G.fx.push({ kind: 'beam', x: u.x, y: u.y, x2: w.x, y2: w.y, t: 0, life: 0.3, color: '120,255,140' }); }
+    }
+  }
+  // target acquisition (staggered)
+  if (h.target) u.tgt = h.target;
+  else {
+    u.scan -= dt;
+    if (u.tgt && (!alive(u.tgt) || (u.tgt.kind !== 'prop' && dist(u.tgt, anchor) > LEASH + 60 && dist(u.tgt, u) > 200))) u.tgt = null;
+    if (u.scan <= 0) {
+      u.scan = 0.25 + Math.random() * 0.15;
+      if (!u.tgt || u.tgt.kind === 'prop') {
+        const e = nearestEnemy(u, Math.max(170, S.range + 90), anchor, LEASH);
+        if (e) u.tgt = e;
+      }
+      if (!u.tgt && S.propMul && Math.hypot(gx - u.x, gy - u.y) < 70) u.tgt = nearestProp(anchor, 200);
+    }
+  }
+  if (u.tgt && !alive(u.tgt)) u.tgt = null;
+  if (u.tgt) {
+    const d = dist(u, u.tgt) - u.tgt.r - u.r;
+    if (d <= S.range) {
+      u.ang = Math.atan2(u.tgt.y - u.y, u.tgt.x - u.x);
+      if (u.cd <= 0) doAttack(u, u.tgt);
+      steer(u, u.x, u.y, 0, dt);
+    } else { const n = navStep(u, u.tgt.x, u.tgt.y); steer(u, n.x, n.y, spd, dt); }
+  } else {
+    const d = Math.hypot(gx - u.x, gy - u.y);
+    if (d > 5) { const n = navStep(u, gx, gy); steer(u, n.x, n.y, spd, dt); } else steer(u, gx, gy, 0, dt);
+  }
+}
+
+// Seek a point while avoiding props/buildings and spreading out from allies.
+function steer(u, tx, ty, speed, dt) {
+  let dx = tx - u.x, dy = ty - u.y; const d = Math.hypot(dx, dy) || 1;
+  let vx = 0, vy = 0;
+  if (speed > 0) {
+    const sp = Math.min(speed, d / dt);
+    vx = dx / d * sp; vy = dy / d * sp;
+    const nx = dx / d, ny = dy / d;
+    const avoid = (o, rr) => {
+      const rx = o.x - u.x, ry = o.y - u.y;
+      const along = rx * nx + ry * ny;
+      if (along <= 0 || along > Math.min(d, 90) + rr) return;
+      const cross = rx * ny - ry * nx; // >0: obstacle is on the right
+      const need = rr + u.r + 4;
+      if (Math.abs(cross) < need) {
+        const side = cross > 0 ? 1 : -1;
+        const k = (1 - Math.abs(cross) / need) * speed * 1.4;
+        vx += ny * side * k; vy += -nx * side * k;
+      }
+    };
+    for (const p of G.props) if (p.hp > 0 && Math.abs(p.x - u.x) < 130 && Math.abs(p.y - u.y) < 130 && p !== u.tgt) avoid(p, p.r);
+    for (const b of G.blds) if (b.built && b !== u.tgt && Math.abs(b.x - u.x) < 150 && Math.abs(b.y - u.y) < 150) avoid(b, b.r);
+    const m = Math.hypot(vx, vy); if (m > speed) { vx = vx / m * speed; vy = vy / m * speed; }
+    u.ang = Math.atan2(vy, vx);
+  }
+  // separation from allies
+  for (const o of G.units) {
+    if (o === u || o.dead || o.team !== u.team) continue;
+    const ox = u.x - o.x, oy = u.y - o.y;
+    if (Math.abs(ox) > 40 || Math.abs(oy) > 40) continue;
+    const dd = Math.hypot(ox, oy) || 0.01, need = u.r + o.r + 2;
+    if (dd < need) { const k = (need - dd) / need * 70; vx += ox / dd * k; vy += oy / dd * k; }
+  }
+  u.vx = vx; u.vy = vy;
+  u.x += vx * dt; u.y += vy * dt;
+  collide(u);
+}
+function collide(u) {
+  for (const p of G.props) {
+    if (p.hp <= 0) continue;
+    const dx = u.x - p.x, dy = u.y - p.y; if (Math.abs(dx) > 60 || Math.abs(dy) > 60) continue;
+    const d = Math.hypot(dx, dy) || 0.01, need = p.r + u.r * 0.8;
+    if (d < need) { u.x = p.x + dx / d * need; u.y = p.y + dy / d * need; }
+  }
+  for (const b of G.blds) {
+    if (!b.built) continue;
+    const dx = u.x - b.x, dy = u.y - b.y; if (Math.abs(dx) > 90 || Math.abs(dy) > 90) continue;
+    const d = Math.hypot(dx, dy) || 0.01, need = b.r + u.r * 0.8;
+    if (d < need) { u.x = b.x + dx / d * need; u.y = b.y + dy / d * need; }
+  }
+  u.x = clamp(u.x, 10, WORLD_W - 10); u.y = clamp(u.y, 10, WORLD_H - 10);
+}
+
+// ---- possession: you drive one unit directly
+function updPossessed(u, dt) {
+  const S = u.S, inp = INPUT;
+  const spd = S.speed * 1.3 * (u.slowT > 0 ? 0.5 : 1);
+  let mx = inp.mx, my = inp.my; const m = Math.hypot(mx, my);
+  if (m > 1) { mx /= m; my /= m; }
+  // aim: mouse / right stick / auto-aim (touch)
+  let aim = null;
+  if (inp.aimWorld) aim = inp.aimWorld;
+  else {
+    const auto = autoAim(u);
+    if (auto) aim = { x: auto.x, y: auto.y };
+    else if (m > 0.1) aim = { x: u.x + mx * 100, y: u.y + my * 100 };
+  }
+  if (aim) u.ang = Math.atan2(aim.y - u.y, aim.x - u.x);
+  else if (m > 0.1) u.ang = Math.atan2(my, mx);
+  u.vx = mx * spd; u.vy = my * spd;
+  u.x += u.vx * dt; u.y += u.vy * dt;
+  collide(u);
+  if (inp.attack && u.cd <= 0) possAttack(u, aim);
+  if (inp.special && u.titan && u.spCd <= 0) { titanSpecial(u, aim || { x: u.x + Math.cos(u.ang) * 150, y: u.y + Math.sin(u.ang) * 150 }); }
+  inp.special = false;
+}
+function autoAim(u) {
+  const foe = enemiesOf(u.team);
+  let best = null, bs = Infinity;
+  const reach = Math.max(u.S.range * 1.3, 120);
+  for (const o of [...G.units, ...G.blds]) {
+    if (o.team !== foe || !alive(o)) continue;
+    const d = dist(u, o) - o.r; if (d > reach) continue;
+    if (d < bs) { bs = d; best = o; }
+  }
+  if (!best && u.S.propMul) { const p = nearestProp(u, 60); if (p) best = p; }
+  return best;
+}
+
+function possAttack(u, aim) {
+  const S = u.S;
+  u.cd = S.rate * 0.85; u.atkT = 0.18;
+  const ang = u.ang;
+  const foe = enemiesOf(u.team);
+  const inCone = (o, reach, cone) => { const d = dist(u, o) - o.r - u.r; if (d > reach) return false; const a = Math.atan2(o.y - u.y, o.x - u.x); let da = Math.abs(a - ang); if (da > Math.PI) da = Math.PI * 2 - da; return da < cone || d < 4; };
+  if (!S.proj && !S.chain) {
+    // melee cleave: hits everything in a wide arc in front
+    const reach = S.range + 14;
+    let hitAny = false;
+    for (const o of [...G.units, ...G.blds]) if (o.team === foe && alive(o) && inCone(o, reach, 0.95)) { hit(o, S.dmg * 1.5, S.dt, u); hitAny = true; }
+    for (const p of G.props) if (p.hp > 0 && inCone(p, reach, 0.95)) { hit(p, S.dmg * 1.5, S.dt, u); hitAny = true; }
+    if (S.splash && u.titan) G.fx.push({ kind: 'arc', x: u.x, y: u.y, ang, r: u.r + reach, t: 0, life: 0.2 });
+    else G.fx.push({ kind: 'arc', x: u.x, y: u.y, ang, r: u.r + reach, t: 0, life: 0.15 });
+    if (hitAny) shake(u.titan ? 6 : 1.5);
+    return;
+  }
+  let best = null, bs = Infinity;
+  for (const o of [...G.units, ...G.blds]) if (o.team === foe && alive(o) && inCone(o, S.range * 1.15, 0.4)) { const d = dist(u, o); if (d < bs) { bs = d; best = o; } }
+  if (S.chain) {
+    if (best) doChain(u, best, S.dmg * 1.5, S.chain);
+    else G.fx.push({ kind: 'bolt', pts: zig(u.x, u.y, u.x + Math.cos(ang) * S.range, u.y + Math.sin(ang) * S.range), t: 0, life: 0.12, w: 2 });
+    return;
+  }
+  const tx = best ? best.x : u.x + Math.cos(ang) * S.range, ty = best ? best.y : u.y + Math.sin(ang) * S.range;
+  fireProj(u, best, tx, ty, S.dmg * 1.5);
+}
+
+function titanSpecial(u, aim) {
+  const S = u.S; u.spCd = S.spCd;
+  const foe = enemiesOf(u.team);
+  if (S.special === 'slam') {
+    for (const o of G.units) if (!o.dead && o.team === foe && dist(o, u) < 150) { hit(o, 90, 'crush', u); if (!o.titan) o.stunT = 1.4; }
+    for (const b of G.blds) if (b.team === foe && alive(b) && dist(b, u) < 150) hit(b, 120, 'crush', u);
+    for (const p of G.props) if (p.hp > 0 && dist(p, u) < 150) hit(p, 200, 'crush', u);
+    fxRing(u.x, u.y, 20, 160, '230,200,150', 0.5); shake(14); dust(u.x, u.y, 24);
+  } else if (S.special === 'barrage') {
+    for (let i = 0; i < 7; i++) {
+      const a = Math.random() * Math.PI * 2, d = Math.random() * 90;
+      const p = { kind: 'bomb', team: u.team, src: u, x: u.x, y: u.y - 20, sx: u.x, sy: u.y, tx: aim.x + Math.cos(a) * d, ty: aim.y + Math.sin(a) * d, target: null, speed: 300 + i * 30, dmg: 60, dt: 'crush', splash: 70, prog: 0 };
+      p.len = Math.hypot(p.tx - p.x, p.ty - p.y);
+      G.projs.push(p);
+    }
+  } else if (S.special === 'nova') {
+    for (const o of G.units) if (!o.dead && o.team === foe && dist(o, u) < 180) { hit(o, 80, 'arcane', u); o.slowT = 4; }
+    for (const b of G.blds) if (b.team === foe && alive(b) && dist(b, u) < 180) hit(b, 80, 'arcane', u);
+    fxRing(u.x, u.y, 20, 190, '140,190,255', 0.5);
+    for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; G.fx.push({ kind: 'bolt', pts: zig(u.x, u.y, u.x + Math.cos(a) * 180, u.y + Math.sin(a) * 180), t: 0, life: 0.25, w: 2.5 }); }
+    shake(8);
+  }
+  if (u.team === P) toast(`${S.spName}!`, 'var(--gold)');
+}
+
+function doAttack(u, t) {
+  const S = u.S;
+  u.cd = S.rate * (0.9 + Math.random() * 0.2); u.atkT = 0.18;
+  const dmg = S.dmg;
+  if (S.chain) return doChain(u, t, dmg, S.chain);
+  if (S.proj) return fireProj(u, t, t.x, t.y, dmg);
+  hit(t, dmg, S.dt, u);
+  if (S.splash && u.titan) {
+    for (const o of G.units) if (!o.dead && o.team === enemiesOf(u.team) && o !== t && dist(o, t) < S.splash) hit(o, dmg * 0.6, S.dt, u);
+    G.fx.push({ kind: 'arc', x: u.x, y: u.y, ang: u.ang, r: u.r + S.range, t: 0, life: 0.2 });
+    shake(3);
+  }
+}
+
+function doChain(u, first, dmg, n) {
+  const foe = enemiesOf(u.team);
+  let cur = first, prev = u, d = dmg; const hitSet = new Set();
+  for (let k = 0; k < n && cur; k++) {
+    hitSet.add(cur);
+    G.fx.push({ kind: 'bolt', pts: zig(prev.x, prev.y - 6, cur.x, cur.y), t: 0, life: 0.14, w: u.titan ? 3.5 : 2 });
+    hit(cur, d, u.S ? u.S.dt : 'arcane', u);
+    prev = cur; d *= 0.8;
+    let nb = null, nd = 130;
+    for (const o of G.units) if (!o.dead && o.team === foe && !hitSet.has(o)) { const dd = dist(o, prev); if (dd < nd) { nd = dd; nb = o; } }
+    cur = nb;
+  }
+}
+
+function fireProj(src, target, tx, ty, dmg) {
+  const S = src.S || stat(src);
+  const kind = S.proj || 'rock';
+  const speed = { arrow: 620, rock: 380, bomb: 330, fire: 520 }[kind];
+  const p = { kind, team: src.team, src, x: src.x, y: src.y - 8, sx: src.x, sy: src.y, tx, ty, target, speed, dmg, dt: S.dt, splash: S.splash || 0, prog: 0 };
+  p.len = Math.hypot(tx - p.x, ty - p.y) || 1;
+  G.projs.push(p);
+}
+
+function updProjs(dt) {
+  for (const p of G.projs) {
+    if (p.target && alive(p.target) && p.kind !== 'bomb') { p.tx = p.target.x; p.ty = p.target.y; }
+    const dx = p.tx - p.x, dy = p.ty - p.y, d = Math.hypot(dx, dy), mv = p.speed * dt;
+    p.prog += mv;
+    if (d <= mv + 3) { p.done = true; projHit(p); }
+    else { p.x += dx / d * mv; p.y += dy / d * mv; p.ang = Math.atan2(dy, dx); }
+  }
+  G.projs = G.projs.filter(p => !p.done);
+}
+function projHit(p) {
+  const foe = enemiesOf(p.team);
+  if (p.splash) {
+    for (const o of G.units) if (!o.dead && o.team === foe) { const d = dist(o, p); if (d < p.splash + o.r) hit(o, p.dmg * (1 - 0.45 * d / (p.splash + o.r)), p.dt, p.src); }
+    for (const b of G.blds) if (b.team === foe && alive(b) && dist(b, p) < p.splash + b.r) hit(b, p.dmg, p.dt, p.src);
+    for (const pr of G.props) if (pr.hp > 0 && dist(pr, p) < p.splash + pr.r) hit(pr, p.dmg * 0.6, p.dt, p.src);
+    G.fx.push({ kind: 'boom', x: p.x, y: p.y, r: p.splash, t: 0, life: 0.35 });
+    dust(p.x, p.y, 6);
+    return;
+  }
+  if (p.target && alive(p.target)) { hit(p.target, p.dmg, p.dt, p.src); return; }
+  // untargeted shot (possession): hit whatever is at the landing point
+  for (const o of [...G.units, ...G.blds]) if (o.team === foe && alive(o) && dist(o, p) < o.r + 10) { hit(o, p.dmg, p.dt, p.src); return; }
+  for (const pr of G.props) if (pr.hp > 0 && dist(pr, p) < pr.r + 6) { hit(pr, p.dmg, p.dt, p.src); return; }
+}
+
+function hit(t, dmg, dt, src) {
+  if (!alive(t)) return;
+  const team = src ? src.team : -1;
+  if (t.kind === 'prop') {
+    const amt = dmg * (src && src.S && src.S.propMul ? src.S.propMul : 1) * (src && src.titan ? 2 : 1);
+    t.hp -= amt; t.hitT = 0.1;
+    if (t.hp <= 0) {
+      t.hp = 0;
+      if (team >= 0) { G.gold[team] += t.gold; if (team === P) { G.stats.gold += t.gold; text(t.x, t.y - 10, '+' + t.gold, '#ffcf4a'); } }
+      dust(t.x, t.y, 12, t.type === 'tree' ? '#3a6a2a' : t.type === 'crate' ? '#8a6a3a' : '#7a756a');
+      G.props = G.props.filter(p => p !== t);
+      G.navDirty = true;
+    }
+    return;
+  }
+  let mult = ARMOR[dt][t.armor];
+  if (t.kind === 'unit') {
+    for (const o of G.units) if (!o.dead && o.team === t.team && o.S.aura && dist(o, t) < 120) { mult *= 1 - o.S.aura; break; }
+    if (t === G.poss) mult *= 0.7;
+  }
+  const amt = dmg * mult;
+  t.hp -= amt; t.hitT = 0.1;
+  if (t.kind === 'bld' && team >= 0) {
+    G.goldFrac[team] += amt * 0.08;
+    const g = Math.floor(G.goldFrac[team]); if (g > 0) { G.goldFrac[team] -= g; G.gold[team] += g; if (team === P) G.stats.gold += g; }
+  }
+  if (t.hp <= 0) kill(t, team);
+}
+
+function kill(t, team) {
+  if (t.kind === 'unit') {
+    t.dead = true; t.hp = 0;
+    if (team >= 0) {
+      G.souls[team] += t.titan ? 15 : 1; G.gold[team] += t.titan ? 60 : 4;
+      if (team === P) { G.stats.kills++; text(t.x, t.y - 14, t.titan ? '+15 ✦' : '+1 ✦', '#c58cff'); }
+    }
+    if (t.team === P) G.stats.lost++;
+    blood(t);
+    if (t === G.poss) { exitPossess(); toast('Your possessed warrior has fallen!', 'var(--bad)'); }
+    if (t.titan) { shake(16); fxRing(t.x, t.y, 10, 160, '255,120,60', 0.7); toast(t.team === P ? 'Your titan has fallen!' : 'Enemy titan destroyed!', t.team === P ? 'var(--bad)' : 'var(--good)'); }
+  } else if (t.kind === 'bld') {
+    t.hp = 0;
+    G.navDirty = true;
+    if (t.type === 'turret') t.dead = true; else { t.built = false; t.buildT = 0; }
+    if (team >= 0) { G.gold[team] += 150; if (team === P) text(t.x, t.y - 20, '+150', '#ffcf4a'); }
+    shake(12); dust(t.x, t.y, 30, '#6a6050'); fxRing(t.x, t.y, 10, 120, '255,160,80', 0.6);
+    const what = t.type === 'hall' ? 'Hall of Titans' : t.type === 'shrine' ? `${CLANS[t.clan].name} shrine` : 'turret';
+    if (t.type !== 'turret' || t.team === P) toast(t.team === P ? `Your ${what} was destroyed!` : `Enemy ${what} destroyed!`, t.team === P ? 'var(--bad)' : 'var(--good)');
+  }
+}
+
+function updBld(b, dt) {
+  if (b.hitT > 0) b.hitT -= dt;
+  if (b.built && b.buildT < 1) {
+    b.buildT = Math.min(1, b.buildT + dt / (b.type === 'turret' ? 5 : 12));
+    b.hp = Math.min(b.max, b.hp + b.max * dt / (b.type === 'turret' ? 5 : 12));
+    if (b.buildT >= 1) { b.everBuilt = true; if (b.team === P && b.type === 'shrine') { toast(`${CLANS[b.clan].name} shrine complete! New units available.`, CLANS[b.clan].color); renderRecruit(); } }
+  }
+  if (b.type === 'shrine' && b.built && b.buildT >= 1) b.everBuilt = true;
+  if (b.type !== 'turret' || !alive(b) || b.buildT < 1) return;
+  const S = TURRETS[b.tur];
+  b.cd -= dt;
+  if (b.cd > 0) return;
+  let best = null, bd = S.range;
+  for (const o of G.units) if (!o.dead && o.team !== b.team) { const d = dist(o, b) - o.r; if (d < bd) { bd = d; best = o; } }
+  if (!best) { b.cd = 0.2; return; }
+  b.ang = Math.atan2(best.y - b.y, best.x - b.x);
+  b.cd = S.rate;
+  const src = { team: b.team, S, x: b.x, y: b.y };
+  if (S.chain) doChain(src, best, S.dmg, S.chain);
+  else fireProj(src, best, best.x, best.y, S.dmg);
+}
+
+function updWells(dt) {
+  for (const w of G.wells) {
+    let n = [0, 0];
+    for (const u of G.units) if (!u.dead && dist(u, w) < 120) n[u.team]++;
+    w.contested = n[0] && n[1];
+    if (!w.contested) {
+      const team = n[0] ? P : n[1] ? E : -1;
+      if (team >= 0) {
+        const dir = team === P ? 1 : -1, rate = (12 + 4 * Math.min(10, n[team])) * dt;
+        const before = w.owner;
+        w.prog = clamp(w.prog + dir * rate, -100, 100);
+        if (w.prog >= 100) w.owner = P; else if (w.prog <= -100) w.owner = E;
+        else if (w.owner === P && w.prog < 0) w.owner = -1; else if (w.owner === E && w.prog > 0) w.owner = -1;
+        if (before !== w.owner && w.owner >= 0) toast(w.owner === P ? 'Soul Well captured! +souls over time.' : 'The enemy captured a Soul Well!', w.owner === P ? 'var(--soul)' : 'var(--bad)');
+      }
+    }
+    if (w.owner >= 0) {
+      w.tick += dt;
+      if (w.tick >= 2.5) { w.tick = 0; G.souls[w.owner] += 1; if (w.owner === P) text(w.x, w.y - 30, '+1 ✦', '#c58cff'); }
+    }
+  }
+}
+
+function updFog() {
+  const fw = G.fogW, fh = G.fogH, cs = WORLD_W / fw;
+  G.vis.fill(0);
+  const reveal = (x, y, r) => {
+    const x0 = Math.max(0, Math.floor((x - r) / cs)), x1 = Math.min(fw - 1, Math.floor((x + r) / cs));
+    const y0 = Math.max(0, Math.floor((y - r) / cs)), y1 = Math.min(fh - 1, Math.floor((y + r) / cs));
+    for (let j = y0; j <= y1; j++) for (let i = x0; i <= x1; i++) {
+      const cx = (i + 0.5) * cs, cy = (j + 0.5) * cs;
+      if ((cx - x) ** 2 + (cy - y) ** 2 <= r * r) { G.vis[j * fw + i] = 1; G.seen[j * fw + i] = 1; }
+    }
+  };
+  for (const u of G.units) if (!u.dead && u.team === P) reveal(u.x, u.y, u.S.vision || (u.titan ? 330 : 250));
+  for (const b of G.blds) if (b.team === P && (alive(b) || b.type === 'shrine')) reveal(b.x, b.y, b.type === 'hall' ? 380 : 260);
+  for (const w of G.wells) if (w.owner === P) reveal(w.x, w.y, 220);
+  fogDirty = true;
+}
+function visibleAt(x, y) {
+  const cs = WORLD_W / G.fogW;
+  const i = clamp(Math.floor(x / cs), 0, G.fogW - 1), j = clamp(Math.floor(y / cs), 0, G.fogH - 1);
+  return G.vis[j * G.fogW + i] === 1;
+}
+
+// ---- enemy AI: recruits, rebuilds, defends its base and raids wells/shrines
+function aiThink(dt) {
+  const ai = G.ai;
+  ai.think -= dt;
+  if (ai.think > 0) return;
+  ai.think = 1;
+  const hs = G.hordes[E];
+  const clans = Object.keys(CLANS).filter(c => ownedShrine(E, c));
+  if (!clans.length) return;
+  // build missing shrines once rich
+  for (const c of Object.keys(CLANS)) {
+    if (!ownedShrine(E, c) && !G.blds.find(b => b.team === E && b.clan === c && b.type === 'shrine' && b.built)) {
+      const cost = shrineCost(E, c);
+      if (G.t > 90 && canPay(E, cost.g + 80, cost.s)) { buildShrine(E, c); return; }
+    }
+  }
+  // turrets
+  const nTur = G.blds.filter(b => b.team === E && b.type === 'turret' && alive(b)).length;
+  if (nTur < Math.min(TURRET_MAX - 1, 1 + Math.floor(G.t / 150)) && canPay(E, TURRET_COST.g + 60, TURRET_COST.s)) {
+    const hl = hall(E) || G.blds.find(b => b.team === E && alive(b));
+    for (let i = 0; i < 12 && hl; i++) {
+      const a = Math.random() * Math.PI * 2, d = rand(140, 330);
+      const x = hl.x + Math.cos(a) * d, y = hl.y + Math.sin(a) * d;
+      if (turretSpotOk(E, x, y)) { placeTurret(E, clans[Math.floor(Math.random() * clans.length)], x, y); break; }
+    }
+  }
+  // titan
+  if (!hs[3].units.length && G.t > 240 && canPay(E, TITAN_COST.g, TITAN_COST.s)) buildTitan(E, clans[Math.floor(Math.random() * clans.length)]);
+  // recruit: fill the smallest horde (but save up once a titan is affordable in souls)
+  const savingForTitan = !hs[3].units.length && G.t > 240 && G.souls[E] >= TITAN_COST.s && G.gold[E] < TITAN_COST.g + 40;
+  for (let k = 0; k < 2 && !savingForTitan; k++) {
+    const h = [hs[0], hs[1], hs[2]].filter(h => h.units.length < HORDE_CAP && h.state !== 'attack').sort((a, b) => a.units.length - b.units.length)[0];
+    if (!h) break;
+    const pool = clans.flatMap(c => CLANS[c].units).filter(t => canPay(E, UNITS[t].g, UNITS[t].s));
+    if (!pool.length) break;
+    recruit(E, pool[Math.floor(Math.random() * pool.length)], h.i);
+  }
+  // defence: anything of the player's near enemy buildings gets swarmed
+  const home = hall(E) || G.blds.find(b => b.team === E && alive(b));
+  let intruder = null;
+  for (const u of G.units) if (!u.dead && u.team === P && G.blds.some(b => b.team === E && alive(b) && dist(b, u) < 600)) { intruder = u; break; }
+  const defPt = home ? { x: home.x - 260, y: home.y + 230 } : { x: WORLD_W - 600, y: 500 };
+  hs[0].pt = intruder ? { x: intruder.x, y: intruder.y } : defPt;
+  // raiders
+  const attackSize = Math.min(HORDE_CAP, 5 + Math.floor(G.t / 120));
+  for (const h of [hs[1], hs[2]]) {
+    const n = h.units.length;
+    if (h.state === 'gather') {
+      h.pt = intruder ? { x: intruder.x, y: intruder.y } : { x: defPt.x - 120 * h.i, y: defPt.y + 80 };
+      if (n >= attackSize && G.t > 70) { h.state = 'attack'; ai.wave++; if (ai.wave === 1) toast('An enemy horde is on the march!', 'var(--bad)'); }
+    } else if (h.state === 'attack') {
+      if (n <= 2) { h.state = 'gather'; h.target = null; continue; }
+      const goal = aiGoal(h);
+      if (goal) { h.pt = { x: goal.x, y: goal.y }; if (goal.kind === 'bld' && dist(hordeCentroid(h), goal) < 260) h.target = goal; }
+    }
+  }
+  if (hs[3].units.length) {
+    const lead = hs[1].state === 'attack' ? hs[1] : hs[2].state === 'attack' ? hs[2] : hs[0];
+    if (lead.pt) hs[3].pt = { ...lead.pt };
+  }
+}
+function aiGoal(h) {
+  const c = hordeCentroid(h); if (!c) return null;
+  const wells = G.wells.filter(w => w.owner !== E).sort((a, b) => dist(a, c) - dist(b, c));
+  if (wells.length && dist(wells[0], c) < 1300) return wells[0];
+  const targets = G.blds.filter(b => b.team === P && alive(b)).sort((a, b) => (a.type === 'turret' ? 0 : 1) - (b.type === 'turret' ? 0 : 1) || dist(a, c) - dist(b, c));
+  return targets[0] || wells[0];
+}
+
+function checkEnd() {
+  if (G.over) return;
+  const pAlive = G.blds.some(b => b.team === P && b.type === 'shrine' && b.built);
+  const eAlive = G.blds.some(b => b.team === E && b.type === 'shrine' && b.built);
+  if (!eAlive) endGame(true); else if (!pAlive) endGame(false);
+}
+
+// ---------------------------------------------------------------- possession helpers
+function tryPossess(u) {
+  if (!u || u.dead || u.team !== P) return false;
+  if (G.poss) G.poss.possessed = false;
+  G.poss = u; u.possessed = true; u.tgt = null;
+  G.sel = u.horde;
+  document.body.classList.add('possessing');
+  fxRing(u.x, u.y, 30, 6, '255,207,74', 0.4);
+  toast(`Possessing ${u.S.name}${G.hordes[P][u.horde].follow ? ' — horde follows' : ''}`, 'var(--gold)');
+  refreshHud();
+  return true;
+}
+function exitPossess() {
+  if (!G.poss) return;
+  const u = G.poss; u.possessed = false; G.poss = null;
+  const h = G.hordes[P][u.horde];
+  if (!u.dead) h.pt = { x: u.x, y: u.y }; h.queue = [];
+  document.body.classList.remove('possessing');
+  INPUT.mx = INPUT.my = 0; INPUT.attack = false;
+  refreshHud();
+}
+function possessSelected() {
+  if (G.poss) { exitPossess(); return; }
+  const h = G.hordes[P][G.sel];
+  if (!h.units.length) { toast(G.sel === 3 ? 'No titan to possess.' : `Horde ${G.sel + 1} is empty.`, 'var(--bad)'); return; }
+  const c = screenToWorld(view.w / 2, view.h / 2);
+  const u = h.units.slice().sort((a, b) => dist(a, c) - dist(b, c))[0];
+  tryPossess(u);
+}
+function unitAt(x, y, team, pad = 14) {
+  let best = null, bd = Infinity;
+  for (const u of G.units) { if (u.dead || (team != null && u.team !== team)) continue; const d = Math.hypot(u.x - x, u.y - y); if (d < u.r + pad / view.z && d < bd) { bd = d; best = u; } }
+  return best;
+}
+function enemyAt(x, y) {
+  const pad = 14 / view.z;
+  for (const u of G.units) if (!u.dead && u.team === E && visibleAt(u.x, u.y) && Math.hypot(u.x - x, u.y - y) < u.r + pad) return u;
+  for (const b of G.blds) if (b.team === E && alive(b) && G.seen[seenIdx(b.x, b.y)] && Math.hypot(b.x - x, b.y - y) < b.r + pad) return b;
+  return null;
+}
+function propAt(x, y) { for (const p of G.props) if (p.hp > 0 && Math.hypot(p.x - x, p.y - y) < p.r + 8 / view.z) return p; return null; }
+function seenIdx(x, y) { const cs = WORLD_W / G.fogW; return clamp(Math.floor(y / cs), 0, G.fogH - 1) * G.fogW + clamp(Math.floor(x / cs), 0, G.fogW - 1); }
+
+// command the selected horde at a world point (tap / right-click / gamepad A)
+function commandAt(wx, wy, queue) {
+  if (G.place) { if (placeTurret(P, G.place.clan, wx, wy)) { toast('Turret placed.', 'var(--good)'); G.place = null; refreshHud(); } return; }
+  const h = G.hordes[P][G.sel];
+  if (!h.units.length) { toast(G.sel === 3 ? 'No titan yet — build one at the Hall of Titans.' : `Horde ${G.sel + 1} is empty. Recruit at a shrine.`, 'var(--bad)'); return; }
+  const target = enemyAt(wx, wy) || propAt(wx, wy);
+  orderHorde(P, G.sel, target ? target.x : wx, target ? target.y : wy, target, queue);
+}
+
+function selectHorde(i) {
+  const now = performance.now();
+  if (G.sel === i && now - (selectHorde.last || 0) < 350) { const c = hordeCentroid(G.hordes[P][i]); if (c) centerOn(c); }
+  selectHorde.last = now;
+  G.sel = i;
+  if (G.poss && G.poss.horde !== i) exitPossess();
+  refreshHud();
+}
+
+// ---------------------------------------------------------------- effects helpers
+function fxRing(x, y, r0, r1, color, life) { G.fx.push({ kind: 'ring', x, y, r0, r1, color, t: 0, life }); }
+function text(x, y, s, color) { if (G.texts.length < 60) G.texts.push({ x, y, s, color, t: 0 }); }
+function shake(n) { G.shake = Math.max(G.shake || 0, n); }
+function dust(x, y, n, color = '#8a7a5a') { if (G.fx.length > 450) return; for (let i = 0; i < n; i++) { const a = Math.random() * 6.28, v = rand(20, 90); G.fx.push({ kind: 'part', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, color, s: rand(2, 5), t: 0, life: rand(0.4, 0.8) }); } }
+function blood(u) { dust(u.x, u.y, u.titan ? 30 : 8, u.team === P ? CLANS[u.S.clan].dark : '#5a1010'); G.fx.push({ kind: 'corpse', x: u.x, y: u.y, r: u.r, color: CLANS[u.S.clan].dark, t: 0, life: 6 }); }
+function zig(x1, y1, x2, y2) { const pts = [[x1, y1]], dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L; for (let i = 1; i < 6; i++) { const o = (Math.random() - 0.5) * Math.min(20, L * 0.3); pts.push([x1 + dx * i / 6 + nx * o, y1 + dy * i / 6 + ny * o]); } pts.push([x2, y2]); return pts; }
+
+// ---------------------------------------------------------------- 4. INPUT
+const cvs = document.getElementById('game'), ctx = cvs.getContext('2d');
+const view = { w: innerWidth, h: innerHeight, dpr: 1, z: 1 };
+const INPUT = { mx: 0, my: 0, attack: false, special: false, aimWorld: null, mouse: null, keys: {} };
+let touchMode = matchMedia('(pointer: coarse)').matches;
+if (touchMode) document.body.classList.add('touch');
+
+function resize() {
+  view.w = innerWidth; view.h = innerHeight; view.dpr = Math.min(2, devicePixelRatio || 1);
+  cvs.width = Math.round(view.w * view.dpr); cvs.height = Math.round(view.h * view.dpr);
+  clampCam();
+}
+addEventListener('resize', resize);
+function screenToWorld(sx, sy) { return { x: G.cam.x + sx / view.z, y: G.cam.y + sy / view.z }; }
+function centerOn(p) { G.cam.x = p.x - view.w / 2 / view.z; G.cam.y = p.y - view.h / 2 / view.z; clampCam(); }
+function clampCam() {
+  if (!G) return;
+  const vw = view.w / view.z, vh = view.h / view.z;
+  G.cam.x = vw > WORLD_W ? (WORLD_W - vw) / 2 : clamp(G.cam.x, 0, WORLD_W - vw);
+  G.cam.y = vh > WORLD_H ? (WORLD_H - vh) / 2 : clamp(G.cam.y, 0, WORLD_H - vh);
+}
+function setZoom(z, sx = view.w / 2, sy = view.h / 2) {
+  const before = screenToWorld(sx, sy);
+  view.z = clamp(z, minZoom(), 1.6);
+  G.cam.x = before.x - sx / view.z; G.cam.y = before.y - sy / view.z; clampCam();
+}
+function minZoom() { return Math.max(0.35, Math.min(view.w / WORLD_W, view.h / WORLD_H)); }
+
+// --- keyboard
+addEventListener('keydown', e => {
+  if (!G || e.repeat) return;
+  const k = e.key.toLowerCase();
+  INPUT.keys[k] = true;
+  if (e.key === 'Escape') { if (G.place) { G.place = null; refreshHud(); } else togglePause(); return; }
+  if (G.over || G.paused) return;
+  if (k === 'tab') { e.preventDefault(); cycleTab(1); return; }
+  if (k >= '1' && k <= '4') { selectHorde(+k - 1); return; }
+  if (k === 'e') {
+    if (G.poss) { exitPossess(); return; }
+    const m = INPUT.mouse && screenToWorld(INPUT.mouse.x, INPUT.mouse.y);
+    const u = m && unitAt(m.x, m.y, P, 18);
+    if (u) tryPossess(u); else possessSelected();
+    return;
+  }
+  if (k === 'f') { toggleFollow(); return; }
+  if (k === ' ') { e.preventDefault(); if (G.poss) INPUT.special = true; else { const c = hordeCentroid(G.hordes[P][G.sel]); if (c) centerOn(c); } return; }
+  const slot = ['z', 'x', 'c', 'v'].indexOf(k);
+  if (slot >= 0) { const t = CLANS[G.tab].units[slot]; if (t) { recruit(P, t, G.sel < 3 ? G.sel : null); refreshHud(); } return; }
+  if (k === 'g') { startTurret(); return; }
+  if (k === 'h') { buildTitan(P, G.tab); refreshHud(); return; }
+  if (k === 'b') { buildShrine(P, G.tab); refreshHud(); return; }
+});
+addEventListener('keyup', e => { INPUT.keys[e.key.toLowerCase()] = false; });
+addEventListener('blur', () => { INPUT.keys = {}; INPUT.attack = false; });
+
+function keyMove() {
+  const K = INPUT.keys;
+  return { x: (K.d || K.arrowright ? 1 : 0) - (K.a || K.arrowleft ? 1 : 0), y: (K.s || K.arrowdown ? 1 : 0) - (K.w || K.arrowup ? 1 : 0) };
+}
+
+// --- pointer: mouse + touch share one handler set
+const ptrs = new Map();
+let gesture = null; // { kind: 'pan'|'tap'|'pinch'|'stick', ... }
+let lastTap = { t: 0, id: null };
+cvs.addEventListener('contextmenu', e => e.preventDefault());
+cvs.addEventListener('pointerdown', e => {
+  if (!G || G.over) return;
+  if (e.pointerType === 'touch' && !touchMode) { touchMode = true; document.body.classList.add('touch'); }
+  cvs.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(), type: e.pointerType, button: e.button });
+  if (G.paused) return;
+  if (e.pointerType === 'mouse') {
+    INPUT.mouse = { x: e.clientX, y: e.clientY };
+    if (G.poss) { if (e.button === 0) INPUT.attack = true; if (e.button === 2) INPUT.special = true; return; }
+    if (e.button === 2) { const w = screenToWorld(e.clientX, e.clientY); commandAt(w.x, w.y, e.shiftKey || G.queueMode); return; }
+    if (e.button === 1) { gesture = { kind: 'pan', id: e.pointerId, cx: G.cam.x, cy: G.cam.y, sx: e.clientX, sy: e.clientY }; return; }
+    gesture = { kind: 'tap', id: e.pointerId, cx: G.cam.x, cy: G.cam.y, sx: e.clientX, sy: e.clientY };
+    return;
+  }
+  // touch
+  if (G.poss) {
+    if (e.clientX < view.w * 0.5) gesture = { kind: 'stick', id: e.pointerId, ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY };
+    return;
+  }
+  if (ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()];
+    gesture = { kind: 'pinch', d0: Math.hypot(a.x - b.x, a.y - b.y), z0: view.z, mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, cx: G.cam.x, cy: G.cam.y };
+    clearTimeout(longPressT);
+    return;
+  }
+  gesture = { kind: 'tap', id: e.pointerId, cx: G.cam.x, cy: G.cam.y, sx: e.clientX, sy: e.clientY };
+  clearTimeout(longPressT);
+  longPressT = setTimeout(() => {
+    // long-press = queue a waypoint (touch's Shift+right-click)
+    if (gesture && gesture.kind === 'tap' && gesture.id === e.pointerId) {
+      gesture.kind = 'done';
+      const w = screenToWorld(e.clientX, e.clientY); commandAt(w.x, w.y, true);
+      if (navigator.vibrate) navigator.vibrate(20);
+      toast('Waypoint queued', 'var(--good)');
+    }
+  }, 480);
+});
+let longPressT = 0;
+cvs.addEventListener('pointermove', e => {
+  if (!G) return;
+  const p = ptrs.get(e.pointerId);
+  if (e.pointerType === 'mouse') INPUT.mouse = { x: e.clientX, y: e.clientY };
+  if (!p) return;
+  p.x = e.clientX; p.y = e.clientY;
+  if (!gesture) return;
+  if (gesture.kind === 'stick' && gesture.id === e.pointerId) {
+    let dx = e.clientX - gesture.ox, dy = e.clientY - gesture.oy; const R = 60, m = Math.hypot(dx, dy);
+    if (m > R) { gesture.ox += dx * (1 - R / m); gesture.oy += dy * (1 - R / m); dx = e.clientX - gesture.ox; dy = e.clientY - gesture.oy; }
+    gesture.x = e.clientX; gesture.y = e.clientY;
+    INPUT.mx = dx / R; INPUT.my = dy / R;
+    return;
+  }
+  if (gesture.kind === 'pinch' && ptrs.size >= 2) {
+    const [a, b] = [...ptrs.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y), mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const wBefore = { x: gesture.cx + gesture.mid.x / gesture.z0, y: gesture.cy + gesture.mid.y / gesture.z0 };
+    view.z = clamp(gesture.z0 * d / gesture.d0, minZoom(), 1.6);
+    G.cam.x = wBefore.x - mid.x / view.z; G.cam.y = wBefore.y - mid.y / view.z; clampCam();
+    return;
+  }
+  if ((gesture.kind === 'tap' || gesture.kind === 'pan') && gesture.id === e.pointerId) {
+    const dx = e.clientX - gesture.sx, dy = e.clientY - gesture.sy;
+    if (gesture.kind === 'tap' && Math.hypot(dx, dy) > 10) { gesture.kind = 'pan'; clearTimeout(longPressT); }
+    if (gesture.kind === 'pan') { G.cam.x = gesture.cx - dx / view.z; G.cam.y = gesture.cy - dy / view.z; clampCam(); }
+  }
+});
+function endPointer(e) {
+  const p = ptrs.get(e.pointerId);
+  ptrs.delete(e.pointerId);
+  clearTimeout(longPressT);
+  if (!G || !p) return;
+  if (e.pointerType === 'mouse' && e.button === 0) INPUT.attack = false;
+  if (!gesture) return;
+  if (gesture.kind === 'stick' && gesture.id === e.pointerId) { INPUT.mx = INPUT.my = 0; gesture = null; return; }
+  if (gesture.kind === 'pinch') { if (ptrs.size === 0) gesture = null; else gesture = { kind: 'done' }; return; }
+  if (gesture.kind === 'tap' && gesture.id === e.pointerId && e.type === 'pointerup') handleTap(e.clientX, e.clientY, p.type, e.shiftKey);
+  if (ptrs.size === 0) gesture = null;
+}
+cvs.addEventListener('pointerup', endPointer);
+cvs.addEventListener('pointercancel', endPointer);
+cvs.addEventListener('wheel', e => { if (!G) return; e.preventDefault(); setZoom(view.z * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX, e.clientY); }, { passive: false });
+
+function handleTap(sx, sy, type, shift) {
+  const w = screenToWorld(sx, sy);
+  const own = unitAt(w.x, w.y, P, type === 'touch' ? 22 : 12);
+  const now = performance.now();
+  if (own && !G.place) {
+    // tap own unit: select its horde; double-tap: possess it
+    if (lastTap.id === own.id && now - lastTap.t < 380) { tryPossess(own); lastTap = { t: 0, id: null }; return; }
+    lastTap = { t: now, id: own.id };
+    G.sel = own.horde; refreshHud();
+    if (type === 'touch') toast(`Horde ${own.horde < 3 ? own.horde + 1 : 'Titan'} selected — double-tap to possess`, 'var(--good)');
+    return;
+  }
+  // mouse left-click on empty ground does nothing but deselect placement; touch tap issues orders
+  if (type === 'mouse' && !G.place) return;
+  commandAt(w.x, w.y, shift || G.queueMode);
+}
+
+// --- possession touch buttons
+function holdBtn(id, on, off) {
+  const el = document.getElementById(id);
+  el.addEventListener('pointerdown', e => { e.preventDefault(); el.classList.add('down'); on(); });
+  const up = () => { el.classList.remove('down'); off && off(); };
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); el.addEventListener('pointerleave', up);
+}
+holdBtn('atkBtn', () => { INPUT.attack = true; }, () => { INPUT.attack = false; });
+holdBtn('spBtn', () => { INPUT.special = true; });
+holdBtn('exBtn', () => exitPossess());
+holdBtn('flBtn', () => toggleFollow());
+
+// --- minimap: tap/drag to move camera, right-click to order
+const mini = document.getElementById('mini'), mctx = mini.getContext('2d');
+function miniToWorld(e) { const r = mini.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * WORLD_W, y: (e.clientY - r.top) / r.height * WORLD_H }; }
+let miniDrag = false;
+mini.addEventListener('contextmenu', e => e.preventDefault());
+mini.addEventListener('pointerdown', e => {
+  if (!G) return; e.preventDefault(); const w = miniToWorld(e);
+  if (e.button === 2) { orderHorde(P, G.sel, w.x, w.y, null, e.shiftKey || G.queueMode); return; }
+  miniDrag = true; mini.setPointerCapture(e.pointerId); centerOn(w);
+});
+mini.addEventListener('pointermove', e => { if (miniDrag) centerOn(miniToWorld(e)); });
+mini.addEventListener('pointerup', () => { miniDrag = false; });
+
+// --- gamepad (standard mapping)
+const pad = { prev: [], cursor: null };
+function pollPad(dt) {
+  const gp = navigator.getGamepads ? [...navigator.getGamepads()].find(g => g && g.connected) : null;
+  if (!gp || !G) return;
+  if (!pad.cursor) { pad.cursor = { x: view.w / 2, y: view.h / 2 }; toast('Gamepad connected', 'var(--good)'); }
+  const b = i => gp.buttons[i] && gp.buttons[i].pressed;
+  const pressed = i => b(i) && !pad.prev[i];
+  const dz = v => Math.abs(v) < 0.18 ? 0 : v;
+  const lx = dz(gp.axes[0] || 0), ly = dz(gp.axes[1] || 0), rx = dz(gp.axes[2] || 0), ry = dz(gp.axes[3] || 0);
+  if (pressed(9)) togglePause();
+  if (!G.paused && !G.over) {
+    if (G.poss) {
+      INPUT.padMove = { x: lx, y: ly };
+      INPUT.padAim = Math.hypot(rx, ry) > 0.3 ? { x: rx, y: ry } : null;
+      INPUT.padAttack = b(0) || b(7) || b(5);
+      if (pressed(3) || pressed(6)) INPUT.special = true;
+      if (pressed(1)) exitPossess();
+      if (pressed(2)) toggleFollow();
+    } else {
+      INPUT.padMove = null; INPUT.padAim = null; INPUT.padAttack = false;
+      pad.cursor.x = clamp(pad.cursor.x + lx * 750 * dt, 0, view.w); pad.cursor.y = clamp(pad.cursor.y + ly * 750 * dt, 0, view.h);
+      G.cam.x += rx * 900 * dt / view.z; G.cam.y += ry * 900 * dt / view.z;
+      // push the camera when the cursor hits the screen edge
+      if (pad.cursor.x <= 2 || pad.cursor.x >= view.w - 2) G.cam.x += Math.sign(lx) * 700 * dt / view.z;
+      if (pad.cursor.y <= 2 || pad.cursor.y >= view.h - 2) G.cam.y += Math.sign(ly) * 700 * dt / view.z;
+      clampCam();
+      const w = screenToWorld(pad.cursor.x, pad.cursor.y);
+      if (pressed(0)) commandAt(w.x, w.y, b(4));
+      if (pressed(1)) { const u = unitAt(w.x, w.y, P, 30); if (u) tryPossess(u); else possessSelected(); }
+      if (pressed(2)) selectHorde((G.sel + 1) % 3);
+      if (pressed(5)) selectHorde(3);
+      if (pressed(3)) { recruit(P, CLANS[G.tab].units[pad.slot || 0], G.sel < 3 ? G.sel : null); refreshHud(); }
+      if (pressed(14)) cycleTab(-1);
+      if (pressed(15)) cycleTab(1);
+      if (pressed(12)) { pad.slot = ((pad.slot || 0) + CLANS[G.tab].units.length - 1) % CLANS[G.tab].units.length; refreshHud(); }
+      if (pressed(13)) { pad.slot = ((pad.slot || 0) + 1) % CLANS[G.tab].units.length; refreshHud(); }
+      if (pressed(6)) setZoom(view.z / 1.2);
+      if (pressed(7)) setZoom(view.z * 1.2);
+    }
+  }
+  pad.prev = gp.buttons.map(x => x.pressed);
+}
+
+// merge all input sources into INPUT each frame
+function gatherInput() {
+  if (!G || !G.poss) { INPUT.aimWorld = null; return; }
+  const km = keyMove();
+  let mx = km.x, my = km.y;
+  if (INPUT.padMove && (INPUT.padMove.x || INPUT.padMove.y)) { mx = INPUT.padMove.x; my = INPUT.padMove.y; }
+  if (gesture && gesture.kind === 'stick') { mx = INPUT.mx; my = INPUT.my; }
+  else if (!INPUT.padMove || (!INPUT.padMove.x && !INPUT.padMove.y)) { INPUT.mx = mx; INPUT.my = my; }
+  INPUT.mx = mx; INPUT.my = my;
+  INPUT.aimWorld = null;
+  if (INPUT.padAim) INPUT.aimWorld = { x: G.poss.x + INPUT.padAim.x * 200, y: G.poss.y + INPUT.padAim.y * 200 };
+  else if (!touchMode && INPUT.mouse && !pad.cursor) INPUT.aimWorld = screenToWorld(INPUT.mouse.x, INPUT.mouse.y);
+  if (INPUT.padAttack) INPUT.attack = true;
+  else if (pad.cursor && !INPUT.padAttack && !ptrs.size && !document.querySelector('#atkBtn.down')) INPUT.attack = false;
+}
+
+// camera pans with WASD/arrows while not possessing; follows the possessed unit otherwise
+function updCamera(dt) {
+  if (G.poss) {
+    const tx = G.poss.x - view.w / 2 / view.z, ty = G.poss.y - view.h / 2 / view.z;
+    G.cam.x += (tx - G.cam.x) * Math.min(1, dt * 6); G.cam.y += (ty - G.cam.y) * Math.min(1, dt * 6); clampCam();
+    return;
+  }
+  const km = keyMove();
+  if (km.x || km.y) { G.cam.x += km.x * 800 * dt / view.z; G.cam.y += km.y * 800 * dt / view.z; clampCam(); }
+}
+
+// ---------------------------------------------------------------- 5. RENDER
+let ground = null, fogCanvas = null, fogDirty = true;
+function buildGround() {
+  const s = 0.5; // half-res terrain is plenty and keeps mobile memory low
+  const c = document.createElement('canvas'); c.width = WORLD_W * s; c.height = WORLD_H * s;
+  const g = c.getContext('2d'); g.scale(s, s);
+  g.fillStyle = '#3d5a2a'; g.fillRect(0, 0, WORLD_W, WORLD_H);
+  const r = mulberry32(42);
+  for (let i = 0; i < 500; i++) {
+    const x = r() * WORLD_W, y = r() * WORLD_H, rad = 40 + r() * 140;
+    const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+    const col = r() < 0.33 ? '90,120,50' : r() < 0.5 ? '110,95,60' : '30,48,22';
+    gr.addColorStop(0, `rgba(${col},0.22)`); gr.addColorStop(1, `rgba(${col},0)`);
+    g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+  }
+  // dirt road between the bases, with branches to the wells
+  const road = (pts, w) => {
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    for (const [lw, col] of [[w, 'rgba(70,52,30,0.55)'], [w * 0.65, 'rgba(120,96,62,0.55)']]) {
+      g.strokeStyle = col; g.lineWidth = lw; g.beginPath(); g.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]);
+      g.stroke();
+    }
+  };
+  road([[300, 1700], [900, 1380], [1600, 1000], [2300, 620], [2900, 300]], 90);
+  road([[900, 1380], [1150, 640]], 54); road([[2300, 620], [WORLD_W - 1150, WORLD_H - 640]], 54);
+  for (let i = 0; i < 3500; i++) {
+    const x = r() * WORLD_W, y = r() * WORLD_H;
+    g.strokeStyle = r() < 0.5 ? 'rgba(130,170,80,0.45)' : 'rgba(25,45,18,0.5)'; g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + r() * 4 - 2, y - 4 - r() * 4); g.stroke();
+  }
+  for (const b of G.blds) if (b.type !== 'turret') { // stone foundations
+    g.fillStyle = 'rgba(60,55,45,0.6)'; g.beginPath(); g.ellipse(b.x, b.y + 6, b.r + 22, (b.r + 22) * 0.8, 0, 0, 7); g.fill();
+    g.fillStyle = 'rgba(120,112,95,0.5)'; g.beginPath(); g.ellipse(b.x, b.y + 4, b.r + 14, (b.r + 14) * 0.75, 0, 0, 7); g.fill();
+  }
+  const vg = g.createRadialGradient(WORLD_W / 2, WORLD_H / 2, WORLD_H * 0.3, WORLD_W / 2, WORLD_H / 2, WORLD_W * 0.7);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.35)');
+  g.fillStyle = vg; g.fillRect(0, 0, WORLD_W, WORLD_H);
+  return c;
+}
+
+function draw() {
+  const c = ctx;
+  c.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  c.fillStyle = '#121410'; c.fillRect(0, 0, view.w, view.h);
+  if (!G) return;
+  if (!ground) ground = buildGround();
+  c.save();
+  if (G.shake > 0) c.translate((Math.random() - 0.5) * G.shake, (Math.random() - 0.5) * G.shake);
+  c.scale(view.z, view.z); c.translate(-G.cam.x, -G.cam.y);
+  const vx0 = G.cam.x - 80, vy0 = G.cam.y - 80, vx1 = G.cam.x + view.w / view.z + 80, vy1 = G.cam.y + view.h / view.z + 80;
+  const onScreen = o => o.x > vx0 && o.x < vx1 && o.y > vy0 && o.y < vy1;
+  c.drawImage(ground, 0, 0, WORLD_W, WORLD_H);
+  const time = G.t;
+
+  for (const f of G.fx) if (f.kind === 'corpse' && onScreen(f)) {
+    c.globalAlpha = 0.6 * (1 - f.t / f.life); c.fillStyle = f.color;
+    c.beginPath(); c.ellipse(f.x, f.y, f.r * 1.2, f.r * 0.7, 0.4, 0, 7); c.fill(); c.globalAlpha = 1;
+  }
+  // build radius when placing
+  if (G.place) {
+    for (const b of G.blds) if (b.team === P && alive(b) && b.type !== 'turret') {
+      c.fillStyle = 'rgba(93,255,122,0.07)'; c.strokeStyle = 'rgba(93,255,122,0.4)'; c.setLineDash([8, 8]);
+      c.beginPath(); c.arc(b.x, b.y, BUILD_RADIUS, 0, 7); c.fill(); c.stroke(); c.setLineDash([]);
+    }
+  }
+  for (const w of G.wells) drawWell(c, w, time);
+  for (const p of G.props) if (onScreen(p)) drawProp(c, p);
+  for (const b of G.blds) if (onScreen(b) && (b.team === P || G.seen[seenIdx(b.x, b.y)])) drawBld(c, b, time);
+  // waypoints of the selected horde
+  const sh = G.hordes[P][G.sel];
+  if (sh.units.length && sh.pt && !G.poss) {
+    const cen = hordeCentroid(sh);
+    c.strokeStyle = 'rgba(93,255,122,0.6)'; c.lineWidth = 2 / view.z * 1.2; c.setLineDash([6, 8]); c.lineDashOffset = -time * 30;
+    c.beginPath(); c.moveTo(cen.x, cen.y); c.lineTo(sh.pt.x, sh.pt.y); for (const q of sh.queue) c.lineTo(q.x, q.y); c.stroke(); c.setLineDash([]);
+    for (const q of [sh.pt, ...sh.queue]) drawFlag(c, q.x, q.y, time);
+  }
+  const sorted = G.units.filter(u => onScreen(u) && (u.team === P || visibleAt(u.x, u.y))).sort((a, b) => a.y - b.y);
+  for (const u of sorted) drawUnit(c, u, time);
+  for (const p of G.projs) if (onScreen(p) && (p.team === P || visibleAt(p.x, p.y))) drawProj(c, p);
+  for (const f of G.fx) if (f.kind !== 'corpse') drawFx(c, f);
+  c.textAlign = 'center'; c.font = '800 13px Rubik, sans-serif'; c.lineJoin = 'round';
+  for (const t of G.texts) {
+    c.globalAlpha = 1 - t.t / 1.1; c.strokeStyle = 'rgba(0,0,0,0.8)'; c.lineWidth = 3;
+    c.strokeText(t.s, t.x, t.y); c.fillStyle = t.color; c.fillText(t.s, t.x, t.y);
+  }
+  c.globalAlpha = 1;
+  drawFog(c);
+  // turret placement ghost
+  if (G.place && (INPUT.mouse || pad.cursor)) {
+    const m = pad.cursor || INPUT.mouse, w = screenToWorld(m.x, m.y), ok = turretSpotOk(P, w.x, w.y);
+    c.globalAlpha = 0.6; drawTurretShape(c, w.x, w.y, G.place.clan, CLANS[G.place.clan].turret, 0, time); c.globalAlpha = 1;
+    c.strokeStyle = ok ? '#5dff7a' : '#ff4a4a'; c.lineWidth = 2; c.beginPath(); c.arc(w.x, w.y, 26, 0, 7); c.stroke();
+    c.strokeStyle = 'rgba(255,255,255,0.25)'; c.beginPath(); c.arc(w.x, w.y, TURRETS[CLANS[G.place.clan].turret].range, 0, 7); c.stroke();
+  }
+  c.restore();
+
+  // screen-space: joystick, gamepad cursor
+  if (gesture && gesture.kind === 'stick') {
+    c.fillStyle = 'rgba(255,255,255,0.12)'; c.strokeStyle = 'rgba(255,255,255,0.35)'; c.lineWidth = 2;
+    c.beginPath(); c.arc(gesture.ox, gesture.oy, 60, 0, 7); c.fill(); c.stroke();
+    c.fillStyle = 'rgba(255,207,74,0.75)'; c.beginPath(); c.arc(gesture.ox + INPUT.mx * 60, gesture.oy + INPUT.my * 60, 26, 0, 7); c.fill();
+  }
+  if (pad.cursor && !G.poss) {
+    const { x, y } = pad.cursor; c.strokeStyle = '#ffcf4a'; c.lineWidth = 2.5;
+    c.beginPath(); c.arc(x, y, 12, 0, 7); c.moveTo(x - 18, y); c.lineTo(x - 6, y); c.moveTo(x + 6, y); c.lineTo(x + 18, y); c.moveTo(x, y - 18); c.lineTo(x, y - 6); c.moveTo(x, y + 6); c.lineTo(x, y + 18); c.stroke();
+  }
+  if (G.paused && !G.over && document.getElementById('modal').hidden) {
+    c.fillStyle = 'rgba(0,0,0,0.4)'; c.fillRect(0, 0, view.w, view.h);
+  }
+}
+
+function drawFog(c) {
+  if (!fogCanvas) { fogCanvas = document.createElement('canvas'); fogCanvas.width = G.fogW; fogCanvas.height = G.fogH; }
+  if (fogDirty) {
+    const f = fogCanvas.getContext('2d'), img = f.createImageData(G.fogW, G.fogH);
+    for (let i = 0; i < G.vis.length; i++) { img.data[i * 4 + 3] = G.vis[i] ? 0 : G.seen[i] ? 130 : 245; }
+    f.putImageData(img, 0, 0); fogDirty = false;
+  }
+  c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+  c.drawImage(fogCanvas, 0, 0, WORLD_W, WORLD_H);
+}
+
+function drawFlag(c, x, y, t) {
+  c.strokeStyle = '#2a1a0a'; c.lineWidth = 2; c.beginPath(); c.moveTo(x, y); c.lineTo(x, y - 22); c.stroke();
+  c.fillStyle = '#5dff7a'; c.beginPath(); c.moveTo(x, y - 22); c.lineTo(x + 14 + Math.sin(t * 6) * 2, y - 17); c.lineTo(x, y - 12); c.fill();
+}
+
+function drawProp(c, p) {
+  const hit = p.hitT > 0;
+  c.fillStyle = 'rgba(0,0,0,0.3)'; c.beginPath(); c.ellipse(p.x + 4, p.y + p.r * 0.5, p.r, p.r * 0.45, 0, 0, 7); c.fill();
+  if (p.type === 'tree') {
+    c.fillStyle = '#4a3020'; c.fillRect(p.x - 3, p.y - 2, 6, p.r * 0.6);
+    const g = ['#1e4422', '#2a5a2a', '#3b7a36'];
+    for (let i = 0; i < 3; i++) { c.fillStyle = hit ? '#fff' : g[i]; c.beginPath(); c.arc(p.x + (i - 1) * 3, p.y - 6 - i * 5, p.r * (1 - i * 0.24), 0, 7); c.fill(); }
+  } else if (p.type === 'rock') {
+    c.fillStyle = hit ? '#fff' : '#87837a'; c.beginPath();
+    for (let i = 0; i < 7; i++) { const a = i / 7 * 6.283, rr = p.r * (0.82 + ((p.seed * (i + 3) * 7.3) % 1) * 0.3); c.lineTo(p.x + Math.cos(a) * rr, p.y + Math.sin(a) * rr * 0.85); }
+    c.closePath(); c.fill(); c.strokeStyle = '#4a4740'; c.lineWidth = 2; c.stroke();
+    c.fillStyle = 'rgba(255,215,90,0.55)'; c.beginPath(); c.arc(p.x - 4, p.y - 3, 2.5, 0, 7); c.arc(p.x + 5, p.y + 3, 2, 0, 7); c.fill();
+  } else {
+    c.fillStyle = hit ? '#fff' : '#9a6e38'; c.fillRect(p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
+    c.strokeStyle = '#5a3a18'; c.lineWidth = 2; c.strokeRect(p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
+    c.beginPath(); c.moveTo(p.x - p.r, p.y - p.r); c.lineTo(p.x + p.r, p.y + p.r); c.moveTo(p.x + p.r, p.y - p.r); c.lineTo(p.x - p.r, p.y + p.r); c.stroke();
+  }
+  if (p.hp < p.max) bar(c, p.x, p.y - p.r - 10, 26, p.hp / p.max, '#ffcf4a');
+}
+
+function bar(c, x, y, w, f, col) {
+  c.fillStyle = 'rgba(0,0,0,0.75)'; c.fillRect(x - w / 2 - 1, y - 1, w + 2, 5);
+  c.fillStyle = col || (f > 0.6 ? '#4ad04a' : f > 0.3 ? '#e8c03a' : '#e83a3a'); c.fillRect(x - w / 2, y, w * f, 3);
+}
+
+function drawWell(c, w, t) {
+  const col = w.owner === P ? '93,255,122' : w.owner === E ? '255,74,74' : '197,140,255';
+  c.fillStyle = '#3a3440'; c.beginPath(); c.ellipse(w.x, w.y, w.r + 10, (w.r + 10) * 0.75, 0, 0, 7); c.fill();
+  const g = c.createRadialGradient(w.x, w.y, 0, w.x, w.y, w.r);
+  g.addColorStop(0, '#f0dcff'); g.addColorStop(0.5, '#9a5ae0'); g.addColorStop(1, '#2a1040');
+  c.fillStyle = g; c.beginPath(); c.ellipse(w.x, w.y, w.r, w.r * 0.75, 0, 0, 7); c.fill();
+  c.strokeStyle = `rgba(${col},0.9)`; c.lineWidth = 3;
+  c.beginPath(); c.ellipse(w.x, w.y, w.r + 10, (w.r + 10) * 0.75, 0, 0, 7); c.stroke();
+  for (let i = 0; i < 4; i++) { const a = t * 1.5 + i * 1.57; c.fillStyle = 'rgba(230,200,255,0.8)'; c.beginPath(); c.arc(w.x + Math.cos(a) * w.r * 0.6, w.y + Math.sin(a) * w.r * 0.45 - ((t * 20 + i * 9) % 30), 2.5, 0, 7); c.fill(); }
+  if (Math.abs(w.prog) < 100 && w.prog !== 0) {
+    c.strokeStyle = w.prog > 0 ? '#5dff7a' : '#ff4a4a'; c.lineWidth = 5;
+    c.beginPath(); c.arc(w.x, w.y, w.r + 22, -Math.PI / 2, -Math.PI / 2 + Math.abs(w.prog) / 100 * 6.283); c.stroke();
+  }
+  c.fillStyle = '#e8d8ff'; c.font = '700 11px Rubik, sans-serif'; c.textAlign = 'center';
+  c.fillText(w.contested ? 'CONTESTED' : 'SOUL WELL', w.x, w.y + w.r + 26);
+}
+
+function drawBld(c, b, t) {
+  const tc = TEAM_COL[b.team], cl = b.clan ? CLANS[b.clan] : null;
+  if (b.type === 'shrine' && !b.built) {
+    c.strokeStyle = b.team === P ? 'rgba(93,255,122,0.6)' : 'rgba(255,74,74,0.5)'; c.setLineDash([6, 6]); c.lineWidth = 2;
+    c.beginPath(); c.arc(b.x, b.y, b.r, 0, 7); c.stroke(); c.setLineDash([]);
+    c.fillStyle = cl.color; c.globalAlpha = 0.5; c.font = '700 11px Rubik, sans-serif'; c.textAlign = 'center';
+    c.fillText(b.everBuilt ? 'RUINS' : 'SHRINE PLOT', b.x, b.y + 4); c.fillText(cl.name.toUpperCase(), b.x, b.y + 17); c.globalAlpha = 1;
+    return;
+  }
+  if (b.type === 'turret' && b.dead) return;
+  if (!b.built) { // destroyed hall: rubble
+    c.fillStyle = '#4a453c';
+    for (let i = 0; i < 9; i++) { c.beginPath(); c.arc(b.x + Math.cos(i * 2.1) * b.r * 0.7, b.y + Math.sin(i * 1.7) * b.r * 0.5, 7 + (i % 3) * 3, 0, 7); c.fill(); }
+    c.fillStyle = 'rgba(239,230,210,0.6)'; c.font = '700 11px Rubik, sans-serif'; c.textAlign = 'center'; c.fillText('RUINED HALL', b.x, b.y + b.r + 16);
+    return;
+  }
+  const flash = b.hitT > 0;
+  c.save();
+  if (b.buildT < 1) c.globalAlpha = 0.45 + 0.55 * b.buildT;
+  c.fillStyle = 'rgba(0,0,0,0.35)'; c.beginPath(); c.ellipse(b.x + 6, b.y + b.r * 0.6, b.r * 1.05, b.r * 0.45, 0, 0, 7); c.fill();
+  if (b.type === 'hall') {
+    c.fillStyle = flash ? '#fff' : '#6a6458'; c.fillRect(b.x - b.r, b.y - b.r * 0.8, b.r * 2, b.r * 1.5);
+    c.fillStyle = '#4a3a2a'; c.beginPath(); c.moveTo(b.x - b.r - 8, b.y - b.r * 0.8); c.lineTo(b.x, b.y - b.r * 1.6); c.lineTo(b.x + b.r + 8, b.y - b.r * 0.8); c.fill();
+    c.fillStyle = '#1a1208'; c.beginPath(); c.moveTo(b.x - 14, b.y + b.r * 0.7); c.lineTo(b.x - 14, b.y); c.arc(b.x, b.y, 14, Math.PI, 0); c.lineTo(b.x + 14, b.y + b.r * 0.7); c.fill();
+    c.strokeStyle = '#2a2620'; c.lineWidth = 2; c.strokeRect(b.x - b.r, b.y - b.r * 0.8, b.r * 2, b.r * 1.5);
+    for (const s of [-1, 1]) { c.fillStyle = '#ffd34a'; c.beginPath(); c.arc(b.x + s * b.r * 0.6, b.y - b.r * 0.2, 5 + Math.sin(t * 9 + s) * 1.2, 0, 7); c.fill(); }
+    c.fillStyle = '#efe6d2'; c.font = '700 11px Rubik, sans-serif'; c.textAlign = 'center'; c.fillText('HALL OF TITANS', b.x, b.y + b.r + 22);
+  } else if (b.type === 'shrine') {
+    c.fillStyle = flash ? '#fff' : '#5a5448'; c.beginPath(); c.ellipse(b.x, b.y + 10, b.r, b.r * 0.6, 0, 0, 7); c.fill();
+    c.fillStyle = flash ? '#fff' : cl.color;
+    c.beginPath(); c.moveTo(b.x - 16, b.y + 12); c.lineTo(b.x - 9, b.y - 46); c.lineTo(b.x + 9, b.y - 46); c.lineTo(b.x + 16, b.y + 12); c.fill();
+    c.strokeStyle = cl.dark; c.lineWidth = 2; c.stroke();
+    const glow = 0.6 + 0.4 * Math.sin(t * 3 + b.x);
+    c.fillStyle = `rgba(255,240,200,${glow})`; c.beginPath(); c.arc(b.x, b.y - 26, 5, 0, 7); c.fill();
+    c.fillStyle = cl.dark; c.font = '700 12px Bungee, sans-serif'; c.textAlign = 'center'; c.fillText(b.clan[0].toUpperCase(), b.x, b.y - 2);
+    c.fillStyle = tc; c.fillRect(b.x + 18, b.y - 48, 2, 34); c.beginPath(); c.moveTo(b.x + 20, b.y - 48); c.lineTo(b.x + 36, b.y - 42 + Math.sin(t * 5) * 2); c.lineTo(b.x + 20, b.y - 36); c.fill();
+  } else drawTurretShape(c, b.x, b.y, b.clan, b.tur, b.ang, t, flash);
+  c.restore();
+  // team ring + hp
+  c.strokeStyle = tc; c.lineWidth = 2; c.globalAlpha = 0.6; c.beginPath(); c.ellipse(b.x, b.y + b.r * 0.3, b.r + 8, (b.r + 8) * 0.55, 0, 0, 7); c.stroke(); c.globalAlpha = 1;
+  if (b.hp < b.max || b.buildT < 1) bar(c, b.x, b.y - b.r - 30, b.r * 1.6, b.hp / b.max, b.buildT < 1 ? '#8ab0ff' : null);
+}
+
+function drawTurretShape(c, x, y, clan, tur, ang, t, flash) {
+  const cl = CLANS[clan];
+  c.fillStyle = flash ? '#fff' : '#5a5448'; c.beginPath(); c.arc(x, y, 18, 0, 7); c.fill();
+  c.strokeStyle = '#2a2620'; c.lineWidth = 2; c.stroke();
+  c.save(); c.translate(x, y); c.rotate(ang || 0);
+  if (tur === 'catapult') { c.fillStyle = '#6a4a2a'; c.fillRect(-4, -4, 26, 8); c.fillStyle = '#87837a'; c.beginPath(); c.arc(22, 0, 6, 0, 7); c.fill(); }
+  else if (tur === 'flamer') { c.fillStyle = '#3a2a22'; c.fillRect(0, -5, 22, 10); c.fillStyle = `rgba(255,${120 + Math.sin(t * 20) * 60},40,0.9)`; c.beginPath(); c.arc(24, 0, 4, 0, 7); c.fill(); }
+  c.restore();
+  if (tur === 'tesla') {
+    c.fillStyle = '#1c3e6a'; c.fillRect(x - 5, y - 26, 10, 26);
+    const g = c.createRadialGradient(x, y - 28, 0, x, y - 28, 14); g.addColorStop(0, '#fff'); g.addColorStop(0.4, '#8ac0ff'); g.addColorStop(1, 'rgba(80,140,255,0)');
+    c.fillStyle = g; c.beginPath(); c.arc(x, y - 28, 14, 0, 7); c.fill();
+  }
+  c.fillStyle = cl.color; c.beginPath(); c.arc(x, y, 7, 0, 7); c.fill();
+}
+
+function drawUnit(c, u, t) {
+  const S = u.S, cl = CLANS[S.clan], r = u.r;
+  const moving = Math.hypot(u.vx, u.vy) > 5;
+  const bob = moving ? Math.abs(Math.sin(t * 12 + u.wob)) * (u.titan ? 2.5 : 1.8) : 0;
+  const lunge = u.atkT > 0 && !S.proj && !S.chain ? Math.sin(u.atkT / 0.18 * Math.PI) * 5 : 0;
+  const x = u.x + Math.cos(u.ang) * lunge, y = u.y - bob + Math.sin(u.ang) * lunge;
+  const selected = u.team === P && u.horde === G.sel;
+  c.fillStyle = 'rgba(0,0,0,0.35)'; c.beginPath(); c.ellipse(u.x + 2, u.y + r * 0.7, r, r * 0.42, 0, 0, 7); c.fill();
+  c.strokeStyle = TEAM_COL[u.team]; c.lineWidth = selected ? 2.5 : 1.5; c.globalAlpha = selected ? 1 : 0.7;
+  c.beginPath(); c.ellipse(u.x, u.y + r * 0.55, r + 3, (r + 3) * 0.45, 0, 0, 7); c.stroke(); c.globalAlpha = 1;
+  if (u === G.poss) {
+    const p = 0.5 + 0.5 * Math.sin(t * 6);
+    c.strokeStyle = `rgba(255,207,74,${0.6 + p * 0.4})`; c.lineWidth = 3; c.beginPath(); c.ellipse(u.x, u.y + r * 0.55, r + 8 + p * 3, (r + 8 + p * 3) * 0.45, 0, 0, 7); c.stroke();
+    c.fillStyle = '#ffcf4a'; c.beginPath(); c.moveTo(u.x - 6, y - r - 22); c.lineTo(u.x + 6, y - r - 22); c.lineTo(u.x, y - r - 13); c.fill();
+  }
+  c.save(); c.translate(x, y);
+  if (u.titan) drawTitanBody(c, u, t);
+  else {
+    // goblin ears point sideways from facing
+    const a = u.ang, px = -Math.sin(a), py = Math.cos(a);
+    c.fillStyle = cl.dark;
+    for (const s of [-1, 1]) { c.beginPath(); c.moveTo(px * s * r * 0.6, py * s * r * 0.6); c.lineTo(px * s * r * 1.5 - Math.cos(a) * 4, py * s * r * 1.5 - Math.sin(a) * 4); c.lineTo(px * s * r * 0.4 - Math.cos(a) * 5, py * s * r * 0.4 - Math.sin(a) * 5); c.fill(); }
+    c.fillStyle = u.hitT > 0 ? '#fff' : cl.color; c.beginPath(); c.arc(0, 0, r, 0, 7); c.fill();
+    c.strokeStyle = cl.dark; c.lineWidth = 1.5; c.stroke();
+    c.fillStyle = u.team === P ? '#fff8c0' : '#ff5a3a';
+    for (const s of [-1, 1]) { c.beginPath(); c.arc(Math.cos(a) * r * 0.45 + px * s * r * 0.3, Math.sin(a) * r * 0.45 + py * s * r * 0.3, 1.6, 0, 7); c.fill(); }
+    drawGear(c, u.type, a, r, t, cl);
+  }
+  c.restore();
+  if (u.hp < u.max || selected) bar(c, u.x, y - r - (u.titan ? 14 : 8), u.titan ? 50 : 20, u.hp / u.max);
+}
+
+function drawGear(c, type, a, r, t, cl) {
+  const fx = Math.cos(a), fy = Math.sin(a), sx = -fy, sy = fx;
+  c.lineCap = 'round';
+  switch (type) {
+    case 'miner': c.strokeStyle = '#6a4a2a'; c.lineWidth = 2; c.beginPath(); c.moveTo(sx * r * 0.7, sy * r * 0.7); c.lineTo(sx * r * 0.7 + fx * r * 1.3, sy * r * 0.7 + fy * r * 1.3); c.stroke();
+      c.strokeStyle = '#ccc'; c.beginPath(); c.moveTo(sx * r * 0.2 + fx * r * 1.3, sy * r * 0.2 + fy * r * 1.3); c.lineTo(sx * r * 1.2 + fx * r * 1.3, sy * r * 1.2 + fy * r * 1.3); c.stroke(); break;
+    case 'thrower': c.fillStyle = '#87837a'; c.beginPath(); c.arc(sx * r + fx * r * 0.4, sy * r + fy * r * 0.4, r * 0.45, 0, 7); c.fill(); break;
+    case 'heavy': c.strokeStyle = '#4a4238'; c.lineWidth = 4; c.beginPath(); c.arc(0, 0, r + 2, a - 0.9, a + 0.9); c.stroke(); c.fillStyle = '#5e4e38'; c.beginPath(); c.arc(0, 0, r * 0.45, 0, 7); c.fill(); break;
+    case 'mender': c.fillStyle = '#7dff8a'; c.fillRect(-1.5, -5, 3, 10); c.fillRect(-5, -1.5, 10, 3); break;
+    case 'brawler': c.fillStyle = cl.dark; for (const s of [-1, 1]) { c.beginPath(); c.arc(fx * r * 0.9 + sx * s * r * 0.55, fy * r * 0.9 + sy * s * r * 0.55, 3, 0, 7); c.fill(); } break;
+    case 'archer': c.strokeStyle = '#d8b878'; c.lineWidth = 2; c.beginPath(); c.arc(fx * r * 0.4, fy * r * 0.4, r * 0.95, a - 1.1, a + 1.1); c.stroke(); break;
+    case 'bombard': c.fillStyle = '#222'; c.beginPath(); c.arc(-fx * r * 0.8, -fy * r * 0.8, r * 0.55, 0, 7); c.fill(); c.fillStyle = `rgba(255,${150 + Math.sin(t * 20) * 80},40,1)`; c.beginPath(); c.arc(-fx * r * 1.3, -fy * r * 1.3, 2, 0, 7); c.fill(); break;
+    case 'scout': c.strokeStyle = '#ffe066'; c.lineWidth = 2.5; c.beginPath(); c.moveTo(-fx * r * 0.3, -fy * r * 0.3); c.lineTo(-fx * r * 1.4 + sx * 4, -fy * r * 1.4 + sy * 4); c.stroke(); break;
+    case 'warder': c.strokeStyle = '#a8d0ff'; c.lineWidth = 2; c.beginPath(); c.moveTo(sx * r * 0.8 - fx * r * 0.5, sy * r * 0.8 - fy * r * 0.5); c.lineTo(sx * r * 0.8 + fx * r * 1.6, sy * r * 0.8 + fy * r * 1.6); c.stroke(); break;
+    case 'caster': { const g = c.createRadialGradient(fx * r, fy * r, 0, fx * r, fy * r, 6); g.addColorStop(0, '#fff'); g.addColorStop(1, 'rgba(120,180,255,0)'); c.fillStyle = g; c.beginPath(); c.arc(fx * r, fy * r, 6, 0, 7); c.fill(); break; }
+    case 'aegis': c.strokeStyle = `rgba(160,210,255,${0.5 + 0.3 * Math.sin(t * 4)})`; c.lineWidth = 1.5; c.beginPath(); c.arc(0, 0, r + 5, 0, 7); c.stroke(); break;
+  }
+}
+
+function drawTitanBody(c, u, t) {
+  const r = u.r, a = u.ang, cl = CLANS[u.S.clan], hitc = u.hitT > 0;
+  c.rotate(a);
+  if (u.type === 'colossus') {
+    c.fillStyle = hitc ? '#fff' : '#8a8274';
+    c.beginPath(); for (let i = 0; i < 9; i++) { const aa = i / 9 * 6.283, rr = r * (i % 2 ? 0.9 : 1.05); c.lineTo(Math.cos(aa) * rr, Math.sin(aa) * rr); } c.closePath(); c.fill();
+    c.strokeStyle = '#3e3a32'; c.lineWidth = 3; c.stroke();
+    c.fillStyle = '#9a9282'; for (const s of [-1, 1]) { c.beginPath(); c.arc(r * 0.3, s * r * 1.0, r * 0.45, 0, 7); c.fill(); c.stroke(); }
+    c.fillStyle = '#ffae3a'; c.beginPath(); c.arc(r * 0.55, -5, 3.5, 0, 7); c.arc(r * 0.55, 5, 3.5, 0, 7); c.fill();
+  } else if (u.type === 'cinder') {
+    c.fillStyle = hitc ? '#fff' : '#5a3a2a'; c.fillRect(-r, -r * 0.8, r * 2, r * 1.6);
+    c.fillStyle = '#2a1a12'; for (const s of [-1, 1]) c.fillRect(-r * 1.1, s * r * 0.8 - (s > 0 ? 0 : 7), r * 2.2, 7);
+    c.fillStyle = '#3a3a3e'; c.fillRect(0, -6, r * 1.5, 12);
+    c.fillStyle = `rgba(255,${120 + Math.sin(t * 10) * 60},30,0.9)`; c.beginPath(); c.arc(-r * 0.4, 0, 7, 0, 7); c.fill();
+  } else {
+    const g = c.createRadialGradient(0, 0, 0, 0, 0, r * 1.3);
+    g.addColorStop(0, hitc ? '#fff' : '#e8f4ff'); g.addColorStop(0.45, '#58a8f5'); g.addColorStop(1, 'rgba(30,60,140,0)');
+    c.fillStyle = g; c.beginPath(); c.arc(0, 0, r * 1.3, 0, 7); c.fill();
+    c.strokeStyle = 'rgba(220,240,255,0.9)'; c.lineWidth = 1.5;
+    for (let i = 0; i < 4; i++) { const aa = t * 5 + i * 1.57; c.beginPath(); c.moveTo(0, 0); c.lineTo(Math.cos(aa) * r * 0.7 + Math.sin(t * 30 + i) * 4, Math.sin(aa) * r * 0.7); c.lineTo(Math.cos(aa) * r * 1.2, Math.sin(aa) * r * 1.2); c.stroke(); }
+  }
+  c.rotate(-a);
+  c.strokeStyle = cl.color; c.lineWidth = 2; c.beginPath(); c.arc(0, 0, r + 4, 0, 7); c.stroke();
+}
+
+function drawProj(c, p) {
+  if (p.kind === 'arrow') { c.strokeStyle = '#e8d8a8'; c.lineWidth = 2; c.beginPath(); c.moveTo(p.x, p.y); c.lineTo(p.x - Math.cos(p.ang || 0) * 12, p.y - Math.sin(p.ang || 0) * 12); c.stroke(); return; }
+  if (p.kind === 'fire') { c.fillStyle = 'rgba(255,140,40,0.85)'; c.beginPath(); c.arc(p.x, p.y, 4, 0, 7); c.fill(); c.fillStyle = 'rgba(255,230,120,0.9)'; c.beginPath(); c.arc(p.x, p.y, 2, 0, 7); c.fill(); return; }
+  const h = Math.sin(Math.min(1, p.prog / (p.len || 1)) * Math.PI) * Math.min(60, (p.len || 0) * 0.25);
+  c.fillStyle = 'rgba(0,0,0,0.3)'; c.beginPath(); c.ellipse(p.x, p.y + 4, 4, 2, 0, 0, 7); c.fill();
+  c.fillStyle = p.kind === 'bomb' ? '#1a1a1a' : '#8a857a'; c.beginPath(); c.arc(p.x, p.y - h, p.kind === 'bomb' ? 5 : 4, 0, 7); c.fill();
+  if (p.kind === 'bomb') { c.fillStyle = '#ffae3a'; c.beginPath(); c.arc(p.x + 3, p.y - h - 4, 1.8, 0, 7); c.fill(); }
+}
+
+function drawFx(c, f) {
+  const k = f.t / f.life;
+  switch (f.kind) {
+    case 'ring': c.strokeStyle = `rgba(${f.color},${1 - k})`; c.lineWidth = 3; c.beginPath(); c.arc(f.x, f.y, f.r0 + (f.r1 - f.r0) * k, 0, 7); c.stroke(); break;
+    case 'part': c.globalAlpha = 1 - k; c.fillStyle = f.color; c.fillRect(f.x + f.vx * f.t - f.s / 2, f.y + f.vy * f.t - f.s / 2, f.s, f.s); c.globalAlpha = 1; break;
+    case 'bolt': c.save(); c.globalCompositeOperation = 'lighter'; c.strokeStyle = `rgba(190,215,255,${1 - k})`; c.lineWidth = f.w; c.beginPath(); c.moveTo(f.pts[0][0], f.pts[0][1]); for (const q of f.pts) c.lineTo(q[0], q[1]); c.stroke(); c.restore(); break;
+    case 'beam': c.strokeStyle = `rgba(${f.color},${1 - k})`; c.lineWidth = 2; c.beginPath(); c.moveTo(f.x, f.y); c.lineTo(f.x2, f.y2); c.stroke(); break;
+    case 'boom': { c.save(); c.globalCompositeOperation = 'lighter'; const g = c.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r); g.addColorStop(0, `rgba(255,230,160,${1 - k})`); g.addColorStop(0.5, `rgba(255,120,30,${(1 - k) * 0.7})`); g.addColorStop(1, 'rgba(100,20,0,0)'); c.fillStyle = g; c.beginPath(); c.arc(f.x, f.y, f.r * (0.5 + k * 0.5), 0, 7); c.fill(); c.restore(); break; }
+    case 'arc': c.strokeStyle = `rgba(255,255,230,${0.8 * (1 - k)})`; c.lineWidth = 4; c.beginPath(); c.arc(f.x, f.y, f.r, f.ang - 0.9, f.ang + 0.9); c.stroke(); break;
+  }
+}
+
+function drawMini() {
+  const W = mini.width, H = mini.height, sx = W / WORLD_W, sy = H / WORLD_H;
+  mctx.fillStyle = '#25331c'; mctx.fillRect(0, 0, W, H);
+  mctx.fillStyle = '#1a2a14'; for (const p of G.props) mctx.fillRect(p.x * sx - 1, p.y * sy - 1, 3, 3);
+  for (const w of G.wells) { mctx.fillStyle = w.owner === P ? '#5dff7a' : w.owner === E ? '#ff4a4a' : '#c58cff'; mctx.beginPath(); mctx.arc(w.x * sx, w.y * sy, 5, 0, 7); mctx.fill(); }
+  for (const b of G.blds) {
+    if (b.team === E && !G.seen[seenIdx(b.x, b.y)]) continue;
+    if (!b.built && b.type !== 'shrine') continue;
+    mctx.fillStyle = b.built ? TEAM_COL[b.team] : 'rgba(255,255,255,0.25)';
+    const s = b.type === 'hall' ? 10 : b.type === 'shrine' ? 8 : 5; mctx.fillRect(b.x * sx - s / 2, b.y * sy - s / 2, s, s);
+  }
+  for (const u of G.units) {
+    if (u.team === E && !visibleAt(u.x, u.y)) continue;
+    mctx.fillStyle = u.team === P ? (u.horde === G.sel ? '#ffffff' : '#5dff7a') : '#ff4a4a';
+    const s = u.titan ? 6 : 3; mctx.fillRect(u.x * sx - s / 2, u.y * sy - s / 2, s, s);
+  }
+  // fog
+  mctx.globalAlpha = 0.85;
+  for (let j = 0; j < G.fogH; j++) for (let i = 0; i < G.fogW; i++) {
+    const k = j * G.fogW + i; if (G.vis[k]) continue;
+    mctx.fillStyle = G.seen[k] ? 'rgba(0,0,0,0.45)' : '#000'; mctx.fillRect(i * W / G.fogW, j * H / G.fogH, W / G.fogW + 0.5, H / G.fogH + 0.5);
+  }
+  mctx.globalAlpha = 1;
+  mctx.strokeStyle = '#fff'; mctx.lineWidth = 2;
+  mctx.strokeRect(G.cam.x * sx, G.cam.y * sy, view.w / view.z * sx, view.h / view.z * sy);
+}
+
+// ---------------------------------------------------------------- 6. UI
+const $ = id => document.getElementById(id);
+function toast(msg, color = 'var(--ink)') {
+  const box = $('toasts'), d = document.createElement('div');
+  d.className = 'toast'; d.textContent = msg; d.style.color = color;
+  box.appendChild(d); while (box.children.length > 4) box.firstChild.remove();
+  setTimeout(() => d.classList.add('fade'), 2600); setTimeout(() => d.remove(), 3400);
+}
+
+function toggleFollow() {
+  const h = G.hordes[P][G.poss ? G.poss.horde : G.sel];
+  h.follow = !h.follow; toast(h.follow ? 'Horde follows your possessed unit' : 'Horde holds position', 'var(--gold)'); refreshHud();
+}
+function cycleTab(d) { const ks = Object.keys(CLANS); G.tab = ks[(ks.indexOf(G.tab) + d + ks.length) % ks.length]; pad.slot = 0; refreshHud(); }
+function startTurret() {
+  if (!ownedShrine(P, G.tab)) { toast(`Requires the ${CLANS[G.tab].name} shrine.`, 'var(--bad)'); return; }
+  if (!canPay(P, TURRET_COST.g, TURRET_COST.s)) { toast(`Need ${TURRET_COST.g} gold and ${TURRET_COST.s} souls.`, 'var(--bad)'); return; }
+  G.place = G.place ? null : { clan: G.tab };
+  if (G.place) toast(touchMode ? 'Tap near your Hall or a shrine to place the turret' : 'Right-click near your Hall or a shrine to place (Esc cancels)', 'var(--gold)');
+  refreshHud();
+}
+
+const ICON = {};
+function unitIcon(type, titan) {
+  const key = type + (titan ? 't' : '');
+  if (ICON[key]) return ICON[key];
+  const cv = document.createElement('canvas'); cv.width = 52; cv.height = 52;
+  const c = cv.getContext('2d'); c.translate(26, 28); c.scale(titan ? 0.75 : 1.6, titan ? 0.75 : 1.6);
+  const S = titan ? TITANS[type] : UNITS[type];
+  const fake = { type, S, r: S.r, ang: -0.5, hitT: 0, titan };
+  if (titan) drawTitanBody(c, fake, 0.5);
+  else {
+    const cl = CLANS[S.clan];
+    c.fillStyle = cl.color; c.beginPath(); c.arc(0, 0, S.r, 0, 7); c.fill(); c.strokeStyle = cl.dark; c.lineWidth = 1.5; c.stroke();
+    drawGear(c, type, -0.5, S.r, 0.5, cl);
+  }
+  ICON[key] = cv.toDataURL();
+  return ICON[key];
+}
+
+let hudKey = '';
+function refreshHud() { hudKey = ''; }
+function renderHud() {
+  const hs = G.hordes[P];
+  const key = [G.sel, G.tab, !!G.poss, G.queueMode, !!G.place, pad.slot, ...hs.map(h => h.units.map(u => u.type).join(',') + h.follow),
+    Math.floor(G.gold[P] / 5), G.souls[P], G.blds.filter(b => b.team === P).map(b => b.built + '' + (b.buildT >= 1)).join('')].join('|');
+  if (key === hudKey) return;
+  hudKey = key;
+  // hordes
+  const row = $('hordeRow'); row.innerHTML = '';
+  hs.forEach((h, i) => {
+    const b = document.createElement('button');
+    b.className = 'hbtn' + (G.sel === i ? ' sel' : '') + (h.units.length ? '' : ' empty');
+    const label = i < 3 ? String(i + 1) : 'T';
+    const dots = h.units.slice(0, 10).map(u => `<i style="background:${CLANS[u.S.clan].color}"></i>`).join('');
+    b.innerHTML = `<span class="k">${label}</span><span class="n">${i < 3 ? h.units.length + '/' + HORDE_CAP : h.units.length ? 'Titan' : '—'}</span><span class="dots">${dots}</span>`;
+    b.setAttribute('aria-label', i < 3 ? `Horde ${i + 1}` : 'Titan');
+    b.addEventListener('pointerdown', e => { e.preventDefault(); selectHorde(i); });
+    row.appendChild(b);
+  });
+  $('possBtn').innerHTML = G.poss ? 'Release <small class="key">E</small>' : 'Possess <small class="key">E</small>';
+  $('possBtn').classList.toggle('on', !!G.poss);
+  $('queueBtn').classList.toggle('on', G.queueMode);
+  $('queueBtn').innerHTML = touchMode ? 'Waypoints' : 'Waypoints <small>Shift</small>';
+  $('flBtn').textContent = G.hordes[P][G.poss ? G.poss.horde : G.sel].follow ? 'FOLLOW ✓' : 'HOLD';
+  const sp = G.poss && G.poss.titan ? G.poss.S.spName : null;
+  $('spBtn').style.display = sp ? '' : 'none'; if (sp) $('spBtn').textContent = sp;
+  renderRecruit();
+}
+
+function renderRecruit() {
+  const tabs = $('tabs'); tabs.innerHTML = '';
+  for (const [id, cl] of Object.entries(CLANS)) {
+    const owned = ownedShrine(P, id);
+    const building = G.blds.find(b => b.team === P && b.type === 'shrine' && b.clan === id && b.built && b.buildT < 1);
+    const b = document.createElement('button');
+    b.className = 'tab' + (G.tab === id ? ' sel' : '');
+    b.style.borderColor = G.tab === id ? cl.color : ''; b.style.color = G.tab === id ? cl.color : '';
+    b.innerHTML = cl.name + (owned ? '' : building ? ' <span class="lock">⏳</span>' : ' <span class="lock">🔒</span>');
+    b.addEventListener('pointerdown', e => { e.preventDefault(); G.tab = id; pad.slot = 0; $('recruit').classList.remove('collapsed'); $('toggleRecruit').textContent = '▾'; refreshHud(); });
+    tabs.appendChild(b);
+  }
+  const body = $('rbody'); body.innerHTML = '';
+  const cl = CLANS[G.tab], owned = ownedShrine(P, G.tab);
+  const mk = (html, cls, act, title) => { const b = document.createElement('button'); b.className = 'rbtn ' + cls; b.innerHTML = html; b.title = title || ''; b.addEventListener('pointerdown', e => { e.preventDefault(); act(); refreshHud(); }); body.appendChild(b); return b; };
+  const shrineB = G.blds.find(b => b.team === P && b.type === 'shrine' && b.clan === G.tab);
+  if (!owned) {
+    if (shrineB && shrineB.built) { mk(`<span class="nm">Shrine building… ${Math.round(shrineB.buildT * 100)}%</span>`, 'wide na', () => {}); return; }
+    const c = shrineCost(P, G.tab);
+    mk(`<span class="hk">B</span><span class="nm">${shrineB && shrineB.everBuilt ? 'Rebuild' : 'Build'} ${cl.name} Shrine</span><span class="c">${c.g} ● <b>${c.s} ✦</b></span><small>${cl.blurb}</small>`,
+      'wide' + (canPay(P, c.g, c.s) ? '' : ' na'), () => buildShrine(P, G.tab));
+    return;
+  }
+  cl.units.forEach((t, i) => {
+    const S = UNITS[t];
+    mk(`<span class="hk">${'ZXCV'[i]}</span><img src="${unitIcon(t)}" width="26" height="26" alt=""><span class="nm">${S.name}</span><span class="c">${S.g}${S.s ? ` <b>${S.s}✦</b>` : ''}</span>`,
+      (canPay(P, S.g, S.s) ? '' : 'na') + (pad.cursor && (pad.slot || 0) === i ? ' sel' : ''), () => recruit(P, t, G.sel < 3 ? G.sel : null),
+      `${S.name}: ${S.desc} ${DT_NAME[S.dt]} damage, ${ARMOR_NAME[S.armor]} armor.`).style.outline = pad.cursor && (pad.slot || 0) === i ? '2px solid var(--gold)' : '';
+  });
+  mk(`<span class="hk">G</span><span class="nm">${TURRETS[cl.turret].name}</span><span class="c">${TURRET_COST.g} <b>${TURRET_COST.s}✦</b></span>`, (canPay(P, TURRET_COST.g, TURRET_COST.s) ? '' : 'na') + (G.place ? ' sel' : ''), startTurret, 'Defensive turret. Place near your Hall or shrines.');
+  const T = TITANS[cl.titan];
+  mk(`<span class="hk">H</span><img src="${unitIcon(cl.titan, true)}" width="26" height="26" alt=""><span class="nm">${T.name}</span><span class="c">${TITAN_COST.g} <b>${TITAN_COST.s}✦</b></span>`, canPay(P, TITAN_COST.g, TITAN_COST.s) && !G.hordes[P][3].units.length ? '' : 'na', () => buildTitan(P, G.tab), T.desc);
+}
+
+let infoT = 0;
+function renderInfo(dt) {
+  infoT -= dt; if (infoT > 0) return; infoT = 0.25;
+  $('gold').textContent = Math.floor(G.gold[P]); $('souls').textContent = G.souls[P];
+  const m = Math.floor(G.t / 60), s = Math.floor(G.t % 60); $('clock').textContent = `${m}:${String(s).padStart(2, '0')}`;
+  let html;
+  if (G.poss) {
+    const u = G.poss, S = u.S;
+    html = `<b>${S.name}</b> (possessed) · ${Math.ceil(u.hp)}/${u.max} HP · ${DT_NAME[S.dt]} dmg ×1.5 · ${ARMOR_NAME[S.armor]}<br>` +
+      (touchMode ? 'Left thumb: move · ATTACK auto-aims' : 'WASD move · mouse aims · click attack' + (u.titan ? ' · Space/right-click special' : '') + ' · E release');
+  } else if (G.place) {
+    html = `<b>Placing ${TURRETS[CLANS[G.place.clan].turret].name}</b><br>${touchMode ? 'Tap' : 'Right-click'} inside the green circles · Esc / button cancels`;
+  } else {
+    const h = G.hordes[P][G.sel];
+    const counts = {}; for (const u of h.units) counts[u.S.name] = (counts[u.S.name] || 0) + 1;
+    html = `<b>${G.sel < 3 ? 'Horde ' + (G.sel + 1) : 'Titan'}</b>: ${Object.entries(counts).map(([n, c]) => `${c} ${n}`).join(', ') || 'empty'}<span class="hint"><br>` +
+      (touchMode ? 'Tap ground: move · tap enemy/rock: attack · hold: waypoint · double-tap unit: possess · drag: pan · pinch: zoom'
+                 : 'Right-click: move/attack/smash · Shift: waypoints · E over a unit: possess · drag: pan · wheel: zoom') + '</span>';
+  }
+  $('info').innerHTML = html;
+}
+
+function togglePause() {
+  if (!G || G.over) return;
+  G.paused = !G.paused;
+  if (G.paused) showModal(`<h2>Paused</h2>${controlsHtml()}<button class="go" id="resume">Resume</button><button class="go alt" id="restart">Restart</button>`, { resume: togglePause, restart: startGame });
+  else hideModal();
+}
+function controlsHtml() {
+  return `<div class="ctl">
+    <div><h3>Touch</h3>Tap a horde button (1/2/3/T) to select it<br>Tap ground to move · tap enemy, rock, tree or crate to attack<br>Press and hold to queue a waypoint<br>Drag to pan · pinch to zoom<br><b>Double-tap</b> your unit or press <b>Possess</b> to take control: left thumb moves, ATTACK auto-aims</div>
+    <div><h3>Keyboard + mouse</h3><b>1 2 3</b> hordes · <b>4</b> titan (press twice to find)<br><b>Right-click</b> move / attack / smash · <b>Shift</b> waypoints<br><b>E</b> over a unit: possess · <b>WASD</b> move · click attack · <b>F</b> follow<br><b>Tab</b> clan · <b>Z X C V</b> recruit · <b>G</b> turret · <b>H</b> titan · <b>B</b> shrine</div>
+    <div><h3>Gamepad</h3>Left stick cursor · right stick camera<br><b>A</b> order · hold <b>LB</b> for waypoints · <b>X</b> next horde · <b>RB</b> titan<br><b>B</b> possess / release · <b>RT</b> attack · <b>Y</b> recruit (d-pad picks) · <b>LT</b> titan special</div>
+  </div>`;
+}
+function showModal(html, actions = {}) {
+  $('mcard').innerHTML = html; $('modal').hidden = false;
+  for (const [id, fn] of Object.entries(actions)) { const el = $(id); if (el) el.addEventListener('click', fn); }
+}
+function hideModal() { $('modal').hidden = true; }
+
+function endGame(won) {
+  G.over = true;
+  if (G.poss) exitPossess();
+  const m = Math.floor(G.t / 60), s = Math.floor(G.t % 60);
+  showModal(`<h1>${won ? 'Victory!' : 'Defeat'}</h1><p>${won ? 'Every enemy shrine lies in ruins.' : 'Your last shrine has fallen.'}</p>
+    <p>Time ${m}:${String(s).padStart(2, '0')} · Enemies slain ${G.stats.kills} · Warriors lost ${G.stats.lost} · Gold smashed ${G.stats.gold}</p>
+    <button class="go" id="again">Play again</button>`, { again: startGame });
+}
+
+function startGame() {
+  hideModal();
+  newGame();
+  view.z = clamp(Math.min(view.w, view.h) < 500 ? 0.75 : 1, minZoom(), 1.6);
+  centerOn(G.hordes[P][0].pt);
+  if (G.poss) exitPossess();
+  document.body.classList.remove('possessing');
+  refreshHud();
+  if (matchMedia('(max-width: 640px) and (orientation: portrait)').matches) { $('recruit').classList.add('collapsed'); $('toggleRecruit').textContent = '▴'; }
+  toast('Smash rocks, trees and crates for gold. Capture Soul Wells for souls.', 'var(--gold)');
+  setTimeout(() => toast('Destroy every enemy shrine to win.', 'var(--ink)'), 1800);
+}
+
+function titleScreen() {
+  showModal(`<h1>Horde Command</h1><p>Lead three hordes of ten goblin warriors. Smash the land for gold, seize Soul Wells, raise a titan, and burn the enemy shrines.</p>
+    ${controlsHtml()}<button class="go" id="play">Play skirmish</button>`, { play: startGame });
+}
+
+// ---------------------------------------------------------------- main loop
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (G) {
+    pollPad(dt);
+    gatherInput();
+    if (!G.paused && !G.over) { update(dt); updCamera(dt); }
+    renderHud(); renderInfo(dt);
+    draw(); drawMini();
+  } else draw();
+  requestAnimationFrame(frame);
+}
+
+$('pauseBtn').addEventListener('click', togglePause);
+$('toggleRecruit').addEventListener('pointerdown', e => { e.preventDefault(); const r = $('recruit'); r.classList.toggle('collapsed'); $('toggleRecruit').textContent = r.classList.contains('collapsed') ? '▴' : '▾'; });
+$('possBtn').addEventListener('pointerdown', e => { e.preventDefault(); if (G && !G.over) possessSelected(); });
+$('queueBtn').addEventListener('pointerdown', e => { e.preventDefault(); if (!G) return; G.queueMode = !G.queueMode; toast(G.queueMode ? 'Waypoint mode: each order is queued' : 'Waypoint mode off', 'var(--gold)'); refreshHud(); });
+$('centerBtn').addEventListener('pointerdown', e => { e.preventDefault(); if (!G) return; const c = hordeCentroid(G.hordes[P][G.sel]); if (c) centerOn(c); });
+document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+document.addEventListener('gesturestart', e => e.preventDefault());
+addEventListener('gamepadconnected', () => { if (!G) toast('Gamepad connected — press Play', 'var(--good)'); });
+
+window.__hc = { get G() { return G; }, startGame, recruit, orderHorde, buildShrine, buildTitan, tryPossess, exitPossess, update, INPUT };
+resize();
+titleScreen();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
