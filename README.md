@@ -41,3 +41,9 @@ A small-horde, console-style RTS prototype in one file: `horde-command/index.htm
 - **The match:** fog of war, a minimap, and an enemy AI that recruits, rebuilds, defends and raids. Destroy every enemy shrine to win.
 
 **Touch:** tap a horde button, then tap the ground to move or tap an enemy or rock to attack. Hold to queue a waypoint. Drag to pan and pinch to zoom. Double-tap one of your units (or press Possess) to take control: your left thumb moves it and ATTACK auto-aims.
+
+---
+
+# Airflow Bench
+
+`fan-sim/index.html` is a simple 2D airflow simulator for an O11 Dynamic EVO–style case. Each fan slot can be set to off, intake or exhaust. The top, side and bottom mounts each take 3×120mm or 2×140mm fans, and the 360mm AIO radiator can go on the top, side or bottom. The page shows intake and exhaust airflow (CFM), case pressure, a live heat map with moving air, and estimated air temperatures at the GPU and CPU. Use it to compare layouts, not to predict exact temperatures.
