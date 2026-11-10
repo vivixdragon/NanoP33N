@@ -46,4 +46,4 @@ A small-horde, console-style RTS prototype in one file: `horde-command/index.htm
 
 # Airflow Bench
 
-`fan-sim/index.html` is a simple 2D airflow simulator for an O11 Dynamic EVO–style case. Each fan slot can be set to off, intake or exhaust. The top, side and bottom mounts each take 3×120mm or 2×140mm fans, and the 360mm AIO radiator can go on the top, side or bottom. The page shows intake and exhaust airflow (CFM), case pressure, a live heat map with moving air, and estimated air temperatures at the GPU and CPU. Use it to compare layouts, not to predict exact temperatures.
+`fan-sim/index.html` is a simple 2D airflow simulator for an O11 Dynamic EVO–style case. Pick a 120mm or 140mm fan and tap the case to place it. Fans dropped near a panel mount on it as intake or exhaust; fans dropped inside the chamber become interior fans that blow toward the rear, front, up or down. Fans, the GPU, CPU, RAM and the 360mm radiator can all be dragged. The page shows intake and exhaust airflow (CFM), case pressure, a live heat map with moving air, and estimated air temperatures at the GPU and CPU. Use it to compare layouts, not to predict exact temperatures.

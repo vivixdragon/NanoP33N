@@ -4,7 +4,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: a two-column bench — live case cross-section on the left, controls and readouts on the right; stacks on phones. */
+/* Layout: a two-column bench — the case cross-section with its fan toolbar on the left, readouts and settings on the right; stacks on phones. */
 :root {
   --bg: #eaeff1;
   --surface: #ffffff;
@@ -15,6 +15,7 @@
   --case: #2a353d;
   --in: #0a86b4;
   --out: #c9620f;
+  --mix: #7a4fc4;
   --off: #9aa7ae;
   --good: #1f8a4c;
   --warn: #b7791f;
@@ -26,13 +27,13 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0d1317; --surface: #141c21; --surface-2: #1a242a; --ink: #e2ebef; --muted: #8fa0a9; --line: #27333a;
-    --case: #9fb0b9; --in: #3cc0ef; --out: #ff9a3c; --off: #56646c; --good: #4cc47e; --warn: #e2a948; --bad: #ff6b5e;
+    --case: #9fb0b9; --in: #3cc0ef; --out: #ff9a3c; --mix: #b38cff; --off: #56646c; --good: #4cc47e; --warn: #e2a948; --bad: #ff6b5e;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #0d1317; --surface: #141c21; --surface-2: #1a242a; --ink: #e2ebef; --muted: #8fa0a9; --line: #27333a;
-  --case: #9fb0b9; --in: #3cc0ef; --out: #ff9a3c; --off: #56646c; --good: #4cc47e; --warn: #e2a948; --bad: #ff6b5e;
+  --case: #9fb0b9; --in: #3cc0ef; --out: #ff9a3c; --mix: #b38cff; --off: #56646c; --good: #4cc47e; --warn: #e2a948; --bad: #ff6b5e;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -41,18 +42,29 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body); }
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin-bottom: 14px; }
 h1 { font: 700 clamp(26px, 4vw, 36px)/1.05 var(--display); letter-spacing: 0.02em; margin: 0; text-transform: uppercase; text-wrap: balance; }
-header p { margin: 0; color: var(--muted); max-width: 62ch; }
+header p { margin: 0; color: var(--muted); max-width: 64ch; }
 .grid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 18px; align-items: start; }
 @media (max-width: 920px) { .grid { grid-template-columns: minmax(0, 1fr); } }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; min-width: 0; }
 .stage { display: flex; flex-direction: column; gap: 10px; }
 canvas { width: 100%; height: auto; display: block; border-radius: 8px; background: var(--surface-2); touch-action: manipulation; }
+canvas.placing { cursor: crosshair; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.toolbar .lbl { font: 700 12px/1 var(--display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.place { font: 600 14px var(--body); color: var(--surface); background: var(--in); border: 0; border-radius: 8px; padding: 7px 14px; cursor: pointer; }
+.place[aria-pressed="false"] { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); }
+.hint { font-size: 13px; color: var(--muted); margin: 0; min-height: 1.5em; }
+.selbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); }
+.selbar[hidden] { display: none; }
+.selbar b { font-weight: 600; }
+.selbar .row { flex: 1 1 180px; }
 .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 13px; color: var(--muted); }
 .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
 .heatbar { display: inline-block; width: 90px; height: 10px; border-radius: 5px; background: linear-gradient(90deg, #2f7fd6, #39c2b0, #f2cf3a, #f07b2a, #d8352a); vertical-align: -1px; margin: 0 6px; }
 .toggles { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { font: 500 13px var(--body); color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
 .chip[aria-pressed="true"] { border-color: var(--in); color: var(--in); }
+.chip.danger { color: var(--bad); }
 .chip:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--in); outline-offset: 2px; }
 .panel { display: flex; flex-direction: column; gap: 12px; }
 h2 { font: 700 13px/1 var(--display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
@@ -64,46 +76,63 @@ h2 { font: 700 13px/1 var(--display); letter-spacing: 0.12em; text-transform: up
 .pbar { position: relative; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--bad), var(--line) 45%, var(--line) 55%, var(--good)); margin-top: 6px; }
 .pbar i { position: absolute; top: -3px; width: 4px; height: 14px; border-radius: 2px; background: var(--ink); transform: translateX(-2px); }
 .pill { display: inline-block; font: 600 12px var(--body); padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; }
-.notes { margin: 10px 0 0; padding-left: 18px; font-size: 13.5px; color: var(--ink); }
+.notes { margin: 10px 0 0; padding-left: 18px; font-size: 13.5px; }
 .notes li { margin: 3px 0; }
 .notes li.good::marker { color: var(--good); } .notes li.warn::marker { color: var(--warn); } .notes li.bad::marker { color: var(--bad); }
-.zone { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
-.zone:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
-.zhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
-.zhead b { font: 600 14px var(--body); }
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
-.seg button { font: 500 12.5px var(--body); color: var(--ink); background: var(--surface); border: 0; padding: 4px 9px; cursor: pointer; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; flex-wrap: wrap; }
+.seg button { font: 500 13px var(--body); color: var(--ink); background: var(--surface); border: 0; padding: 5px 10px; cursor: pointer; }
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
 .seg button:disabled { opacity: 0.4; cursor: not-allowed; }
-.fans { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
-.fanbtn { font: 500 12.5px var(--body); min-width: 76px; padding: 5px 8px; border-radius: 7px; border: 1.5px solid var(--off); background: var(--surface); color: var(--muted); cursor: pointer; }
-.fanbtn.in { border-color: var(--in); color: var(--in); }
-.fanbtn.out { border-color: var(--out); color: var(--out); }
 .row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
 .row input[type=range] { flex: 1; min-width: 0; accent-color: var(--in); }
 .row output { font: 500 13px var(--mono); color: var(--ink); min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
 select { font: 500 14px var(--body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; width: 100%; }
 label.blk { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
-.inv { font-size: 13px; color: var(--muted); margin-top: 8px; }
+.fanlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.fanlist li { display: flex; align-items: center; gap: 8px; }
+.fanlist .pick { flex: 1; min-width: 0; text-align: left; font: 500 13px var(--body); color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-left: 4px solid var(--off); border-radius: 7px; padding: 5px 9px; cursor: pointer; }
+.fanlist .pick.in { border-left-color: var(--in); } .fanlist .pick.out { border-left-color: var(--out); } .fanlist .pick.mix { border-left-color: var(--mix); }
+.fanlist .pick.sel { border-color: var(--ink); }
+.fanlist .pick span { color: var(--muted); }
+.fanlist .x { font: 600 14px var(--body); color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 7px; width: 30px; height: 30px; cursor: pointer; }
+.inv { font-size: 13px; color: var(--muted); margin-top: 10px; }
 .inv b { color: var(--ink); }
+.btnrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .foot { margin-top: 14px; font-size: 12.5px; color: var(--muted); max-width: 80ch; }
-@media (prefers-reduced-motion: reduce) { .chip, .fanbtn { transition: none; } }
 </style></head><body>
 
 <div class="wrap">
   <header>
     <h1>Airflow Bench</h1>
-    <p>Side view of an O11 Dynamic EVO–style case through the glass. Front is on the left, rear on the right. Tap any fan on the drawing, or use the controls, to switch it between off, intake and exhaust. Drag the GPU, CPU or RAM to move them, and drag the radiator onto another wall.</p>
+    <p>Build your own fan layout in an O11 Dynamic EVO–style case, seen from the side through the glass (front on the left, rear on the right). Pick a fan size, tap Place, then tap the case. Fans dropped near a panel mount on it as intake or exhaust. Fans dropped inside the chamber become interior fans that push air in one direction. Drag anything to move it.</p>
   </header>
 
   <div class="grid">
     <section class="stage card" aria-label="Case simulation">
-      <canvas id="sim" width="800" height="800" aria-label="Simulated airflow inside the case"></canvas>
+      <div class="toolbar">
+        <span class="lbl">Add fan</span>
+        <span class="seg" role="group" aria-label="New fan size">
+          <button type="button" data-newsize="120" aria-pressed="true">120mm</button>
+          <button type="button" data-newsize="140" aria-pressed="false">140mm</button>
+        </span>
+        <button type="button" class="place" id="placeBtn" aria-pressed="false">Place fan</button>
+      </div>
+      <p class="hint" id="hint">Tap “Place fan”, then tap inside the case. Drag any fan, component or the radiator to move it.</p>
+      <canvas id="sim" width="800" height="800" aria-label="Simulated airflow inside the case. Fans and components can be dragged."></canvas>
+      <div class="selbar" id="selbar" hidden>
+        <b id="selName">Fan</b>
+        <span class="seg" role="group" aria-label="Fan size" id="selSize">
+          <button type="button" data-size="120">120mm</button><button type="button" data-size="140">140mm</button>
+        </span>
+        <span class="seg" role="group" aria-label="Airflow direction" id="selDir"></span>
+        <div class="row"><span>Speed</span><input type="range" id="selSpeed" min="20" max="100" step="5" value="70" aria-label="Selected fan speed"><output id="selSpeedO">70%</output></div>
+        <button type="button" class="chip danger" id="selDel">Remove</button>
+      </div>
       <div class="legend">
         <span><span class="sw" style="background:var(--in)"></span>Intake</span>
         <span><span class="sw" style="background:var(--out)"></span>Exhaust</span>
-        <span><span class="sw" style="background:var(--off)"></span>Off</span>
+        <span><span class="sw" style="background:var(--mix)"></span>Interior</span>
         <span>Air temp: cool<span class="heatbar"></span>hot</span>
       </div>
       <div class="toggles" role="group" aria-label="Display layers">
@@ -123,7 +152,7 @@ label.blk { display: block; font-size: 13px; color: var(--muted); margin-bottom:
           <div class="metric"><div class="k">GPU intake air</div><div class="v" id="mGpu">–</div></div>
           <div class="metric"><div class="k">CPU / pump area air</div><div class="v" id="mCpu">–</div></div>
           <div class="metric" style="grid-column: 1 / -1">
-            <div class="k">Case pressure · <span id="mPress" class="pill">–</span></div>
+            <div class="k">Case pressure · <span id="mPress" class="pill">–</span><span id="mInt" style="float:right"></span></div>
             <div class="pbar" aria-hidden="true"><i id="pMark" style="left:50%"></i></div>
           </div>
         </div>
@@ -131,174 +160,206 @@ label.blk { display: block; font-size: 13px; color: var(--muted); margin-bottom:
       </div>
 
       <div class="card">
-        <h2>Presets</h2>
-        <select id="preset" aria-label="Load a preset layout">
-          <option value="">Choose a layout…</option>
-          <option value="rec">Recommended for your parts</option>
-          <option value="sideaio">AIO on the side as intake</option>
-          <option value="nobottom">Bottom fans off</option>
-          <option value="negative">Negative pressure (mostly exhaust)</option>
-          <option value="reversed">Everything reversed</option>
-          <option value="max">Every slot intake except top</option>
-        </select>
+        <h2>Your fans</h2>
+        <ul class="fanlist" id="fanlist"></ul>
         <div class="inv" id="inv"></div>
-      </div>
-
-      <div class="card" id="zonesCard">
-        <h2>Fan slots</h2>
-        <div id="zones"></div>
+        <div class="btnrow">
+          <button type="button" class="chip" id="restore">Start from the recommended layout</button>
+          <button type="button" class="chip danger" id="clearFans">Remove all fans</button>
+        </div>
       </div>
 
       <div class="card">
         <h2>Cooling &amp; load</h2>
-        <label class="blk" for="aio">H150 360mm radiator location</label>
+        <label class="blk" for="aio">H150 360mm radiator</label>
         <select id="aio">
-          <option value="top">Top (uses the 3 top slots)</option>
-          <option value="side">Side (uses the 3 side slots)</option>
-          <option value="bottom">Bottom (uses the 3 bottom slots)</option>
+          <option value="top">Mounted on the top panel</option>
+          <option value="left">Mounted on the side (front) panel</option>
+          <option value="bottom">Mounted on the bottom panel</option>
           <option value="none">No AIO (air cooler on the CPU)</option>
         </select>
-        <div class="row" style="margin-top:10px"><span style="min-width:72px">GPU power</span><input type="range" id="gpuW" min="0" max="450" step="10" value="360"><output id="gpuWo">360 W</output></div>
-        <div class="row"><span style="min-width:72px">CPU power</span><input type="range" id="cpuW" min="0" max="250" step="10" value="150"><output id="cpuWo">150 W</output></div>
-        <button type="button" class="chip" id="resetParts" style="margin-top:10px">Reset component positions</button>
+        <div class="row" style="margin-top:10px"><span style="min-width:72px">Rad fans</span>
+          <span class="seg" role="group" aria-label="Radiator fan direction" id="radDir">
+            <button type="button" data-mode="in">Intake</button><button type="button" data-mode="out">Exhaust</button>
+          </span></div>
+        <div class="row" style="margin-top:8px"><span style="min-width:72px">Rad speed</span><input type="range" id="radSpeed" min="20" max="100" step="5" value="70" aria-label="Radiator fan speed"><output id="radSpeedO">70%</output></div>
+        <div class="row" style="margin-top:8px"><span style="min-width:72px">GPU power</span><input type="range" id="gpuW" min="0" max="450" step="10" value="360" aria-label="GPU power"><output id="gpuWo">360 W</output></div>
+        <div class="row"><span style="min-width:72px">CPU power</span><input type="range" id="cpuW" min="0" max="250" step="10" value="150" aria-label="CPU power"><output id="cpuWo">150 W</output></div>
+        <div class="btnrow"><button type="button" class="chip" id="resetParts">Reset component positions</button></div>
       </div>
     </aside>
   </div>
 
-  <p class="foot">This is a simplified 2D model for comparing layouts, not a CFD study. Fans are rated at 60 CFM (120mm) and 75 CFM (140mm) at full speed. A radiator cuts a fan's flow by about 22% and an intake dust filter by about 8%. Temperatures are rough rises above a 22 °C room, and a GPU's core temperature tends to move about one-for-one with the temperature of the air it pulls in.</p>
+  <p class="foot">This is a simplified 2D model for comparing layouts, not a CFD study. Fans are rated at 60 CFM (120mm) and 75 CFM (140mm) at full speed. A radiator cuts a fan's flow by about 22% and an intake dust filter by about 8%. Interior fans only move air that is already in the case. Temperatures are rough rises above a 22 °C room, and a GPU's core temperature tends to move about one-for-one with the temperature of the air it pulls in.</p>
 </div>
 
 <script>
 'use strict';
-// ---------------------------------------------------------------- model geometry (millimetres → grid cells)
-const CASE_W = 465, CASE_H = 459;             // interior of the main chamber, mm
-const NX = 60, NY = 59, MM = CASE_W / NX;     // ~7.75 mm per cell
+// ================================================================ geometry
+const CASE_W = 465, CASE_H = 459;             // main chamber interior, mm
+const NX = 60, NY = 59, MM = CASE_W / NX;     // ~7.75 mm per grid cell
 const idx = (x, y) => y * NX + x;
 const cell = mm => Math.max(0, Math.min(NX - 1, Math.floor(mm / MM)));
 const celly = mm => Math.max(0, Math.min(NY - 1, Math.floor(mm / MM)));
 const CFM = { 120: 60, 140: 75 };
-const ZONES = {
-  top:    { label: 'Top',    wall: 'top',    sizes: [120, 140], spans: { 120: [[60, 180], [180, 300], [300, 420]], 140: [[70, 210], [210, 350]] } },
-  side:   { label: 'Side (front)', wall: 'left', sizes: [120, 140], spans: { 120: [[40, 160], [160, 280], [280, 400]], 140: [[50, 190], [190, 330]] } },
-  bottom: { label: 'Bottom', wall: 'bottom', sizes: [120, 140], spans: { 120: [[60, 180], [180, 300], [300, 420]], 140: [[70, 210], [210, 350]] } },
-  rear:   { label: 'Rear',   wall: 'right',  sizes: [120],      spans: { 120: [[40, 160]] } },
-};
-const VENTS = [[200, 240], [320, 440]];       // PCIe slot covers & panel gaps on the rear wall (passive)
+const FAN_T = 25;                              // fan thickness, mm
+const RAD_LEN = 360, RAD_T = 55;              // H150: 360mm long, ~55mm with fans
+const VENTS = [[200, 240], [320, 440]];       // PCIe covers and panel gaps on the rear wall (passive)
+const WALLS = ['top', 'bottom', 'left', 'right'];
+const WALL_NAME = { top: 'Top', bottom: 'Bottom', left: 'Side (front)', right: 'Rear' };
+const wallLen = w => (w === 'top' || w === 'bottom') ? CASE_W : CASE_H;
+const NORMAL = { top: [0, 1], bottom: [0, -1], left: [1, 0], right: [-1, 0] };
+const FACE = { rear: [1, 0], front: [-1, 0], up: [0, -1], down: [0, 1] };
+const FACE_NAME = { rear: 'toward rear', front: 'toward front', up: 'upward', down: 'downward' };
+const SNAP_MM = 48;                            // drop this close to a panel and the fan mounts on it
+
+// ================================================================ state
 const DEFAULT_PARTS = () => ({
   gpu: { x0: 161, x1: 465, y0: 250, y1: 305, label: 'RTX 5080' },
   cpu: { x0: 285, x1: 345, y0: 115, y1: 172, label: 'CPU' },
   ram: { x0: 372, x1: 384, y0: 86, y1: 200, label: 'RAM' },
 });
-const RAD_MM = 55; // radiator + fan thickness
+let nextId = 1;
+const wallFan = (size, wall, pos, mode) => ({ id: nextId++, size, wall, pos, mode, speed: 70 });
+const RECOMMENDED = () => [
+  wallFan(120, 'bottom', 120, 'in'), wallFan(120, 'bottom', 240, 'in'), wallFan(120, 'bottom', 360, 'in'),
+  wallFan(140, 'left', 120, 'in'), wallFan(140, 'left', 260, 'in'),
+  wallFan(120, 'right', 100, 'out'),
+];
+const fresh = () => ({ fans: RECOMMENDED(), rad: { wall: 'top', start: 60, mode: 'out', speed: 70 }, parts: DEFAULT_PARTS(), gpuW: 360, cpuW: 150 });
+let S = fresh();
+try {
+  const saved = JSON.parse(localStorage.getItem('airflow-bench-v2') || 'null');
+  if (saved && Array.isArray(saved.fans) && saved.parts && saved.rad) { S = saved; nextId = Math.max(0, ...S.fans.map(f => f.id)) + 1; }
+} catch (e) { /* storage unavailable: start fresh */ }
+function save() { try { localStorage.setItem('airflow-bench-v2', JSON.stringify(S)); } catch (e) { /* ignore */ } }
+let selectedId = null, newSize = 120, placing = false;
 
-// ---------------------------------------------------------------- state
-const DEFAULT = () => ({
-  zones: {
-    top: { size: 120, fans: ['out', 'out', 'out'], speed: 70 },
-    side: { size: 140, fans: ['in', 'in'], speed: 70 },
-    bottom: { size: 120, fans: ['in', 'in', 'in'], speed: 70 },
-    rear: { size: 120, fans: ['out'], speed: 70 },
-  },
-  aio: 'top', gpuW: 360, cpuW: 150, parts: DEFAULT_PARTS(),
-});
-const PRESETS = {
-  rec: DEFAULT,
-  sideaio: () => ({ ...DEFAULT(), aio: 'side', zones: {
-    top: { size: 140, fans: ['out', 'out'], speed: 70 }, side: { size: 120, fans: ['in', 'in', 'in'], speed: 70 },
-    bottom: { size: 120, fans: ['in', 'in', 'in'], speed: 70 }, rear: { size: 120, fans: ['out'], speed: 70 } } }),
-  nobottom: () => { const s = DEFAULT(); s.zones.bottom.fans = ['off', 'off', 'off']; return s; },
-  negative: () => { const s = DEFAULT(); s.zones.side.fans = ['out', 'out']; s.zones.bottom.fans = ['in', 'off', 'off']; return s; },
-  reversed: () => { const s = DEFAULT(); s.zones.top.fans = ['in', 'in', 'in']; s.zones.side.fans = ['out', 'out']; s.zones.bottom.fans = ['out', 'out', 'out']; s.zones.rear.fans = ['in']; return s; },
-  max: () => { const s = DEFAULT(); s.zones.rear.fans = ['in']; return s; },
-};
-let S = DEFAULT();
-try { const saved = JSON.parse(localStorage.getItem('airflow-bench') || 'null'); if (saved && saved.zones) S = saved; } catch (e) { /* storage unavailable */ }
-if (!S.parts || !S.parts.gpu) S.parts = DEFAULT_PARTS();
-function save() { try { localStorage.setItem('airflow-bench', JSON.stringify(S)); } catch (e) { /* ignore */ } }
+// ================================================================ placement rules
+function span(f) { return [f.pos - f.size / 2, f.pos + f.size / 2]; }
+function radSpan() { return [S.rad.start, S.rad.start + RAD_LEN]; }
+function radBox() { // interior footprint of the radiator, mm
+  const [a, b] = radSpan(), w = S.rad.wall;
+  if (w === 'top') return { x0: a, x1: b, y0: 0, y1: RAD_T };
+  if (w === 'bottom') return { x0: a, x1: b, y0: CASE_H - RAD_T, y1: CASE_H };
+  return { x0: 0, x1: RAD_T, y0: a, y1: b };
+}
+function fanBox(f) { // interior fan footprint, mm
+  const along = f.face === 'rear' || f.face === 'front';
+  const w = along ? FAN_T : f.size, h = along ? f.size : FAN_T;
+  return { x0: f.x - w / 2, x1: f.x + w / 2, y0: f.y - h / 2, y1: f.y + h / 2 };
+}
+const overlaps = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+const spansOverlap = (a, b) => a[0] < b[1] - 0.5 && b[0] < a[1] - 0.5;
+function fanValid(f, ignoreId) {
+  if (f.wall) {
+    const [a, b] = span(f);
+    if (a < 0 || b > wallLen(f.wall)) return false;
+    for (const o of S.fans) if (o.id !== ignoreId && o.wall === f.wall && spansOverlap(span(o), [a, b])) return false;
+    if (S.rad.wall === f.wall && spansOverlap(radSpan(), [a, b])) return false;
+    return true;
+  }
+  const bx = fanBox(f);
+  if (bx.x0 < 0 || bx.y0 < 0 || bx.x1 > CASE_W || bx.y1 > CASE_H) return false;
+  for (const k in S.parts) if (overlaps(bx, S.parts[k])) return false;
+  if (S.rad.wall !== 'none' && overlaps(bx, radBox())) return false;
+  for (const o of S.fans) if (o.id !== ignoreId && !o.wall && overlaps(bx, fanBox(o))) return false;
+  return true;
+}
+// Where would a fan of `size` land if dropped at (x, y) mm? Near a panel → wall mount, otherwise interior.
+function placementAt(x, y, size, base) {
+  const d = { top: y, bottom: CASE_H - y, left: x, right: CASE_W - x };
+  const wall = WALLS.slice().sort((a, b) => d[a] - d[b])[0];
+  if (d[wall] < SNAP_MM) {
+    const along = (wall === 'top' || wall === 'bottom') ? x : y;
+    const pos = Math.max(size / 2, Math.min(wallLen(wall) - size / 2, Math.round(along / 5) * 5));
+    const keepMode = base && base.wall ? base.mode : null;
+    const mode = keepMode || (wall === 'bottom' || wall === 'left' ? 'in' : 'out');
+    return { size, wall, pos, mode };
+  }
+  const face = base && !base.wall && base.face ? base.face : 'rear';
+  return { size, wall: null, x: Math.round(x / 5) * 5, y: Math.round(y / 5) * 5, face };
+}
+function fanLabel(f) {
+  return f.wall ? `${WALL_NAME[f.wall]} ${f.size}mm · ${f.mode === 'in' ? 'Intake' : 'Exhaust'}` : `Interior ${f.size}mm · blowing ${FACE_NAME[f.face]}`;
+}
 
-// ---------------------------------------------------------------- simulation fields
-const solid = new Uint8Array(NX * NY);
-const src = new Float32Array(NX * NY);
-const phi = new Float32Array(NX * NY);
+// ================================================================ simulation fields
+const solid = new Uint8Array(NX * NY), src = new Float32Array(NX * NY), phi = new Float32Array(NX * NY);
 const vx = new Float32Array(NX * NY), vy = new Float32Array(NX * NY);
 let T = new Float32Array(NX * NY), T2 = new Float32Array(NX * NY);
-const inletT = new Float32Array(NX * NY).fill(NaN);
-const heat = new Float32Array(NX * NY);
-let fans = [], vents = [], metrics = {};
-const HEAT = 1.5; // tuned so the recommended layout's case air lands near the physics estimate
+const inletT = new Float32Array(NX * NY).fill(NaN), heat = new Float32Array(NX * NY);
+let flows = [], vents = [], metrics = {};
+const HEAT = 1.5; // tuned so a sensible layout's case air lands near the 1.76·W/CFM rule of thumb
 
 function buildSolid() {
   solid.fill(0);
-  for (const k in S.parts) {
-    const p = S.parts[k];
-    for (let y = celly(p.y0); y <= celly(p.y1 - 1); y++) for (let x = cell(p.x0); x <= cell(p.x1 - 1); x++) solid[idx(x, y)] = 1;
-  }
+  for (const k in S.parts) { const p = S.parts[k]; for (let y = celly(p.y0); y <= celly(p.y1 - 1); y++) for (let x = cell(p.x0); x <= cell(p.x1 - 1); x++) solid[idx(x, y)] = 1; }
 }
-
 function wallCells(wall, a, b, all) {
   const out = [];
   if (wall === 'top' || wall === 'bottom') { const y = wall === 'top' ? 0 : NY - 1; for (let x = cell(a); x <= cell(b - 1); x++) out.push(idx(x, y)); }
   else { const x = wall === 'left' ? 0 : NX - 1; for (let y = celly(a); y <= celly(b - 1); y++) out.push(idx(x, y)); }
   return all ? out : out.filter(c => !solid[c]);
 }
-const NORMAL = { top: [0, 1], bottom: [0, -1], left: [1, 0], right: [-1, 0] };
+function boxCells(bx) { const out = []; for (let y = celly(bx.y0); y <= celly(bx.y1 - 1); y++) for (let x = cell(bx.x0); x <= cell(bx.x1 - 1); x++) out.push(idx(x, y)); return out; }
 
-// quick = called while dragging: warm-start the solver, keep particles, skip the DOM controls
+// quick = during a drag or slider move: warm-start the solver and leave the side panel alone
 function rebuild(quick) {
   buildSolid();
-  // AIO zone must hold 3×120 and its fans must all push the same way
-  if (S.aio !== 'none') {
-    const z = S.zones[S.aio];
-    if (z.size !== 120) { z.size = 120; z.fans = [z.fans[0], z.fans[0], z.fans[0]]; }
-    const mode = z.fans.find(f => f !== 'off') || 'out';
-    z.fans = z.fans.map(() => mode);
-  }
-  fans = [];
   src.fill(0); inletT.fill(NaN); heat.fill(0);
-  let intake = 0, exhaust = 0;
-  const zoneCfm = {};
-  for (const [zk, Z] of Object.entries(ZONES)) {
-    const z = S.zones[zk];
-    const spans = Z.spans[z.size];
-    zoneCfm[zk] = 0;
-    spans.forEach(([a, b], i) => {
-      const mode = z.fans[i] || 'off';
-      let cfm = CFM[z.size] * z.speed / 100;
-      if (S.aio === zk) cfm *= 0.78;
-      if (mode === 'in') cfm *= 0.92;
-      const cells = wallCells(Z.wall, a, b);
-      const blocked = wallCells(Z.wall, a, b, true).length - cells.length;
-      if (blocked > 0 && cells.length) cfm *= cells.length / (cells.length + blocked);
-      if (!cells.length) cfm = 0;
-      const f = { zone: zk, i, a, b, wall: Z.wall, mode, cfm: mode === 'off' ? 0 : cfm, size: z.size, cells, rad: S.aio === zk, blocked };
-      fans.push(f);
-      if (mode === 'off' || !cells.length) return;
-      const per = cfm / cells.length * (mode === 'in' ? 1 : -1);
-      for (const c of cells) src[c] += per;
-      if (mode === 'in') intake += cfm; else exhaust += cfm;
-      zoneCfm[zk] += cfm;
-    });
+  flows = [];
+  let intake = 0, exhaust = 0, interior = 0;
+  // wall-mounted fans and the radiator: sources (intake) and sinks (exhaust) on the boundary
+  const wallItems = S.fans.filter(f => f.wall).map(f => ({ f, wall: f.wall, a: span(f)[0], b: span(f)[1], mode: f.mode, cfm: CFM[f.size] * f.speed / 100, rad: false }));
+  if (S.rad.wall !== 'none') {
+    const [a] = radSpan();
+    for (let i = 0; i < 3; i++) wallItems.push({ f: null, wall: S.rad.wall, a: a + i * 120, b: a + (i + 1) * 120, mode: S.rad.mode, cfm: 60 * S.rad.speed / 100 * 0.78, rad: true });
   }
-  // passive vents take up the difference (positive pressure pushes air out, negative pulls dusty air in)
+  for (const it of wallItems) {
+    let cfm = it.cfm * (it.mode === 'in' ? 0.92 : 1);
+    const all = wallCells(it.wall, it.a, it.b, true), cells = all.filter(c => !solid[c]);
+    const blocked = all.length - cells.length;
+    cfm = cells.length ? cfm * cells.length / all.length : 0;
+    flows.push({ ...it, cfm, cells, blocked });
+    if (!cells.length || cfm <= 0) continue;
+    const per = cfm / cells.length * (it.mode === 'in' ? 1 : -1);
+    for (const c of cells) src[c] += per;
+    if (it.mode === 'in') intake += cfm; else exhaust += cfm;
+  }
+  // passive gaps take up the difference: positive pressure pushes air out, negative pulls dusty air in
   vents = VENTS.flatMap(([a, b]) => wallCells('right', a, b));
   const net = intake - exhaust;
   for (const c of vents) src[c] -= net / vents.length;
+  // interior fans: a sink on the back face and an equal source on the front face (moves air, adds none)
+  for (const f of S.fans.filter(f => !f.wall)) {
+    const cfm = CFM[f.size] * f.speed / 100, [dx, dy] = FACE[f.face], bx = fanBox(f);
+    const cells = boxCells(bx).filter(c => !solid[c]);
+    const edge = (c, back) => {
+      const x = c % NX, y = (c / NX) | 0;
+      if (dx) return x === ((dx > 0) === back ? cell(bx.x0) : cell(bx.x1 - 1));
+      return y === ((dy > 0) === back ? celly(bx.y0) : celly(bx.y1 - 1));
+    };
+    const back = cells.filter(c => edge(c, true)), front = cells.filter(c => edge(c, false));
+    flows.push({ f, interior: true, cfm, cells: front, back, dir: [dx, dy] });
+    interior += cfm;
+    if (!back.length || !front.length) continue;
+    for (const c of back) src[c] -= cfm / back.length;
+    for (const c of front) src[c] += cfm / front.length;
+  }
   solvePotential(quick);
   buildVelocity();
-  // inlet temperatures: fresh air is 0 °C above room; a radiator used as intake pre-heats its air
+  // inlet air: room temperature, except a radiator used as intake, which pre-heats its air
   let radRise = 0;
-  if (S.aio !== 'none') {
-    const rf = fans.filter(f => f.rad && f.mode === 'in');
-    const rc = rf.reduce((a, f) => a + f.cfm, 0);
+  if (S.rad.wall !== 'none' && S.rad.mode === 'in') {
+    const rc = flows.filter(r => r.rad).reduce((a, r) => a + r.cfm, 0);
     if (rc > 0) radRise = 1.76 * S.cpuW / rc;
   }
-  for (const f of fans) if (f.mode === 'in') for (const c of f.cells) inletT[c] = f.rad ? radRise : 0;
+  for (const r of flows) if (!r.interior && r.mode === 'in') for (const c of r.cells) inletT[c] = r.rad ? radRise : 0;
   if (net < 0) for (const c of vents) inletT[c] = 0;
-  // heat sources: GPU everywhere around its shroud (more out the top/back like a flow-through card), CPU if air-cooled
   addHeatAround(S.parts.gpu, S.gpuW, { top: 0.55, bottom: 0.25, side: 0.2 });
-  const radFans = fans.filter(f => f.rad && f.mode !== 'off');
-  if (S.aio === 'none' || !radFans.length) addHeatAround(S.parts.cpu, S.cpuW, { top: 0.4, bottom: 0.2, side: 0.4 });
-  metrics = { intake, exhaust, net, radRise, zoneCfm };
+  if (S.rad.wall === 'none') addHeatAround(S.parts.cpu, S.cpuW, { top: 0.4, bottom: 0.2, side: 0.4 });
+  metrics = { intake, exhaust, net, interior, radRise };
   if (quick) { updateReadouts(); return; }
   seedParticles(true);
   updateUI();
@@ -313,7 +374,7 @@ function addHeatAround(p, watts, w) {
   for (const g in groups) { const cs = groups[g].filter(c => !solid[c]); for (const c of cs) heat[c] += watts * w[g] * HEAT / cs.length * 10; }
 }
 
-// Potential flow: solve ∇²φ = −s with walls/parts as no-flow boundaries; velocity = −∇φ.
+// Potential flow: solve ∇²φ = −s with walls and components as no-flow boundaries; velocity = −∇φ.
 function solvePotential(warm) {
   if (!warm) phi.fill(0);
   for (let it = 0, n = warm ? 220 : 900; it < n; it++) {
@@ -328,6 +389,18 @@ function solvePotential(warm) {
     }
   }
 }
+function addJet(cells, nx, ny, q, reach = 34) {
+  for (const c0 of cells) {
+    let x = c0 % NX, y = (c0 / NX) | 0;
+    for (let d = 0; d < reach; d++) {
+      if (x < 0 || y < 0 || x >= NX || y >= NY) break;
+      const c = idx(x, y); if (solid[c]) break;
+      const a = q * 1.1 * Math.exp(-d / 11);
+      vx[c] += nx * a; vy[c] += ny * a;
+      x += nx; y += ny;
+    }
+  }
+}
 function buildVelocity() {
   vx.fill(0); vy.fill(0);
   for (let y = 0; y < NY; y++) for (let x = 0; x < NX; x++) {
@@ -336,24 +409,15 @@ function buildVelocity() {
     const pu = y > 0 && !solid[c - NX] ? phi[c - NX] : phi[c], pd = y < NY - 1 && !solid[c + NX] ? phi[c + NX] : phi[c];
     vx[c] = -(pr - pl) / 2; vy[c] = -(pd - pu) / 2;
   }
-  // intake fans throw a jet that carries momentum into the case before spreading out
-  for (const f of fans) {
-    if (f.mode !== 'in' || !f.cells.length) continue;
-    const [nx, ny] = NORMAL[f.wall], q = f.cfm / f.cells.length;
-    for (const c0 of f.cells) {
-      let x = c0 % NX, y = (c0 / NX) | 0;
-      for (let d = 0; d < 34; d++) {
-        if (x < 0 || y < 0 || x >= NX || y >= NY) break;
-        const c = idx(x, y); if (solid[c]) break;
-        const a = q * 1.1 * Math.exp(-d / 11);
-        vx[c] += nx * a; vy[c] += ny * a;
-        x += nx; y += ny;
-      }
-    }
+  // intake fans and interior fans throw a jet of air before it spreads out
+  for (const r of flows) {
+    if (!r.cells.length) continue;
+    if (r.interior) addJet(r.cells, r.dir[0], r.dir[1], r.cfm / r.cells.length);
+    else if (r.mode === 'in') { const [nx, ny] = NORMAL[r.wall]; addJet(r.cells, nx, ny, r.cfm / r.cells.length); }
   }
 }
 
-// ---------------------------------------------------------------- heat transport
+// ================================================================ heat transport
 const VIS = 4; // time compression so the picture settles in seconds
 function sampleT(F, x, y) {
   x = Math.max(0, Math.min(NX - 1.001, x)); y = Math.max(0, Math.min(NY - 1.001, y));
@@ -367,7 +431,6 @@ function stepHeat(dt) {
     if (solid[c]) { T2[c] = 0; continue; }
     if (!Number.isNaN(inletT[c])) { T2[c] = inletT[c]; continue; }
     let v = sampleT(T, x - vx[c] * dt * VIS, y - vy[c] * dt * VIS);
-    // light mixing with neighbours (turbulence) and a little loss through the panels
     let s = 0, k = 0;
     if (x > 0 && !solid[c - 1]) { s += T[c - 1]; k++; } if (x < NX - 1 && !solid[c + 1]) { s += T[c + 1]; k++; }
     if (y > 0 && !solid[c - NX]) { s += T[c - NX]; k++; } if (y < NY - 1 && !solid[c + NX]) { s += T[c + NX]; k++; }
@@ -378,32 +441,23 @@ function stepHeat(dt) {
   }
   [T, T2] = [T2, T];
 }
-function probe(region) {
-  let s = 0, n = 0;
-  for (const c of region) if (!solid[c]) { s += T[c]; n++; }
-  return n ? s / n : 0;
-}
-function rectCells(x0mm, x1mm, y0mm, y1mm) { const out = []; for (let y = celly(y0mm); y <= celly(y1mm); y++) for (let x = cell(x0mm); x <= cell(x1mm); x++) out.push(idx(x, y)); return out; }
+function rectCells(x0, x1, y0, y1) { const out = []; for (let y = celly(y0); y <= celly(y1); y++) for (let x = cell(x0); x <= cell(x1); x++) out.push(idx(x, y)); return out; }
+function probe(region) { let s = 0, n = 0; for (const c of region) if (!solid[c]) { s += T[c]; n++; } return n ? s / n : 0; }
 const PROBE = {
-  // air just under the GPU (where its fans pull from) and the air around the CPU socket
   get gpuIn() { const g = S.parts.gpu; return rectCells(g.x0 + 30, g.x1 - 20, g.y1 + 4, Math.min(CASE_H - 1, g.y1 + 40)); },
   get cpu() { const c = S.parts.cpu; return rectCells(Math.max(0, c.x0 - 25), Math.min(CASE_W - 1, c.x1 + 25), Math.max(0, c.y0 - 45), Math.min(CASE_H - 1, c.y1 + 30)); },
   all: [...Array(NX * NY).keys()],
 };
 
-// ---------------------------------------------------------------- particles
+// ================================================================ particles
 let particles = [];
-function seedParticles(reset) {
-  if (reset) particles = [];
-  while (particles.length < 520) particles.push(spawn());
-}
-function spawn() {
-  // spawn on intake cells (weighted by flow); fall back to a random interior point
+function seedParticles(reset) { if (reset) particles = []; while (particles.length < 520) particles.push(spawnParticle()); }
+function spawnParticle() {
   const inlets = [];
-  for (const f of fans) if (f.mode === 'in') for (const c of f.cells) inlets.push([c, f.cfm / f.cells.length]);
+  for (const r of flows) if (!r.interior && r.mode === 'in') for (const c of r.cells) inlets.push([c, r.cfm / r.cells.length]);
   if (metrics.net < 0) for (const c of vents) inlets.push([c, -metrics.net / vents.length]);
   let c;
-  if (inlets.length && Math.random() < 0.85) {
+  if (inlets.length && Math.random() < 0.8) {
     const tot = inlets.reduce((a, b) => a + b[1], 0); let r = Math.random() * tot;
     for (const [cc, w] of inlets) { r -= w; if (r <= 0) { c = cc; break; } }
     if (c == null) c = inlets[0][0];
@@ -413,41 +467,37 @@ function spawn() {
 function stepParticles(dt) {
   for (let i = 0; i < particles.length; i++) {
     const p = particles[i];
-    const cx = Math.floor(p.x), cy = Math.floor(p.y);
-    const c = idx(Math.max(0, Math.min(NX - 1, cx)), Math.max(0, Math.min(NY - 1, cy)));
+    const c = idx(Math.max(0, Math.min(NX - 1, Math.floor(p.x))), Math.max(0, Math.min(NY - 1, Math.floor(p.y))));
     p.px = p.x; p.py = p.y;
-    const u = vx[c], v = vy[c], sp = Math.hypot(u, v);
+    const u = vx[c], v = vy[c];
     p.x += u * dt * VIS + (Math.random() - 0.5) * 0.05; p.y += v * dt * VIS + (Math.random() - 0.5) * 0.05;
     p.life -= dt;
-    const nc = Math.floor(p.x) >= 0 && Math.floor(p.x) < NX && Math.floor(p.y) >= 0 && Math.floor(p.y) < NY ? idx(Math.floor(p.x), Math.floor(p.y)) : -1;
-    if (p.life <= 0 || nc < 0 || solid[nc] || sp < 0.004) particles[i] = spawn();
+    const fx = Math.floor(p.x), fy = Math.floor(p.y);
+    if (p.life <= 0 || fx < 0 || fy < 0 || fx >= NX || fy >= NY || solid[idx(fx, fy)] || Math.hypot(u, v) < 0.004) particles[i] = spawnParticle();
   }
 }
 
-// ---------------------------------------------------------------- drawing
+// ================================================================ drawing
 const cv = document.getElementById('sim'), ctx = cv.getContext('2d');
 const PAD = 46;
-let px = 1, W = 0, H = 0; // px per cell
+let px = 1, W = 0, H = 0;
 let colors = {};
 function readColors() {
   const cs = getComputedStyle(document.documentElement);
-  for (const k of ['ink', 'muted', 'line', 'case', 'in', 'out', 'off', 'surface', 'surface-2']) colors[k] = cs.getPropertyValue('--' + k).trim();
+  for (const k of ['ink', 'muted', 'line', 'case', 'in', 'out', 'mix', 'off', 'surface', 'surface-2', 'bad']) colors[k] = cs.getPropertyValue('--' + k).trim();
 }
 function resize() {
   const r = cv.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
   const w = Math.max(280, r.width);
-  px = (w - 2 * PAD) / NX;
-  const h = NY * px + 2 * PAD;
-  W = w; H = h;
-  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
-  cv.style.height = h + 'px';
+  px = (w - 2 * PAD) / NX; W = w; H = NY * px + 2 * PAD;
+  cv.width = Math.round(w * dpr); cv.height = Math.round(H * dpr); cv.style.height = H + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
+const toX = mm => PAD + mm / MM * px, toY = mm => PAD + mm / MM * px;
+const toMM = v => (v - PAD) / px * MM;
 const heatColor = t => {
-  const s = Math.max(0, Math.min(1, t / 14));
-  const stops = [[47, 127, 214], [57, 194, 176], [242, 207, 58], [240, 123, 42], [216, 53, 42]];
-  const f = s * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(f)), k = f - i;
-  const a = stops[i], b = stops[i + 1];
+  const s = Math.max(0, Math.min(1, t / 14)), stops = [[47, 127, 214], [57, 194, 176], [242, 207, 58], [240, 123, 42], [216, 53, 42]];
+  const f = s * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(f)), k = f - i, a = stops[i], b = stops[i + 1];
   return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
 };
 const view = { particles: true, heat: true, arrows: false, paused: false };
@@ -455,354 +505,428 @@ let spin = 0;
 const heatImg = document.createElement('canvas'); heatImg.width = NX; heatImg.height = NY;
 const hctx = heatImg.getContext('2d');
 
-function fanRect(f) {
-  const t = 16; // fan drawn as a bar straddling the wall
-  if (f.wall === 'top' || f.wall === 'bottom') {
-    const x0 = PAD + f.a / MM * px, x1 = PAD + f.b / MM * px;
-    const y = f.wall === 'top' ? PAD - t : PAD + NY * px;
-    return { x: x0 + 2, y, w: x1 - x0 - 4, h: t };
-  }
-  const y0 = PAD + f.a / MM * px, y1 = PAD + f.b / MM * px;
-  const x = f.wall === 'left' ? PAD - t : PAD + NX * px;
-  return { x, y: y0 + 2, w: t, h: y1 - y0 - 4 };
+// screen rectangles (canvas px) used for both drawing and hit testing
+function wallFanRect(f) {
+  const t = 16, [a, b] = span(f);
+  if (f.wall === 'top' || f.wall === 'bottom') return { x: toX(a) + 2, y: f.wall === 'top' ? PAD - t : PAD + NY * px, w: toX(b) - toX(a) - 4, h: t };
+  return { x: f.wall === 'left' ? PAD - t : PAD + NX * px, y: toY(a) + 2, w: t, h: toY(b) - toY(a) - 4 };
 }
+function boxRect(bx) { return { x: toX(bx.x0), y: toY(bx.y0), w: toX(bx.x1) - toX(bx.x0), h: toY(bx.y1) - toY(bx.y0) }; }
+function fanRect(f) { return f.wall ? wallFanRect(f) : boxRect(fanBox(f)); }
+function partRect(p) { return { x: PAD + cell(p.x0) * px, y: PAD + celly(p.y0) * px, w: (cell(p.x1 - 1) - cell(p.x0) + 1) * px, h: (celly(p.y1 - 1) - celly(p.y0) + 1) * px }; }
+function radRect() { return boxRect(radBox()); }
 
 function draw() {
   ctx.clearRect(0, 0, W, H);
   const ix = PAD, iy = PAD, iw = NX * px, ih = NY * px;
-  // heat map
   if (view.heat) {
     const img = hctx.createImageData(NX, NY);
-    for (let c = 0; c < NX * NY; c++) {
-      const [r, g, b] = heatColor(T[c]);
-      img.data[c * 4] = r; img.data[c * 4 + 1] = g; img.data[c * 4 + 2] = b; img.data[c * 4 + 3] = solid[c] ? 0 : 120;
-    }
+    for (let c = 0; c < NX * NY; c++) { const [r, g, b] = heatColor(T[c]); img.data[c * 4] = r; img.data[c * 4 + 1] = g; img.data[c * 4 + 2] = b; img.data[c * 4 + 3] = solid[c] ? 0 : 120; }
     hctx.putImageData(img, 0, 0);
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(heatImg, ix, iy, iw, ih);
+    ctx.imageSmoothingEnabled = true; ctx.drawImage(heatImg, ix, iy, iw, ih);
   }
-  // radiator band
-  if (S.aio !== 'none') {
-    const z = ZONES[S.aio], sp = z.spans[120];
-    const a = sp[0][0] / MM * px, b = sp[sp.length - 1][1] / MM * px, t = RAD_MM / MM * px;
-    const rr = radRect(S.aio), r = [rr.x, rr.y, rr.w, rr.h];
-    ctx.save(); ctx.fillStyle = colors['surface']; ctx.globalAlpha = drag && drag.kind === 'rad' ? 0.25 : 0.55; ctx.fillRect(...r); ctx.globalAlpha = 1;
-    ctx.strokeStyle = colors['muted']; ctx.lineWidth = 1; ctx.beginPath();
-    const [rx, ry, rw, rh] = r;
-    ctx.rect(rx, ry, rw, rh); ctx.clip();
-    for (let k = -rh; k < rw + rh; k += 6) { ctx.moveTo(rx + k, ry); ctx.lineTo(rx + k + rh, ry + rh); }
-    ctx.stroke(); ctx.restore();
-    ctx.fillStyle = colors['ink']; ctx.font = '600 11px "IBM Plex Sans", sans-serif'; ctx.textAlign = 'center';
-    if (z.wall === 'left') { ctx.save(); ctx.translate(ix + t / 2 + 4, iy + (a + b) / 2); ctx.rotate(-Math.PI / 2); ctx.fillText('H150 RADIATOR', 0, 0); ctx.restore(); }
-    else ctx.fillText('H150 RADIATOR', ix + (a + b) / 2, z.wall === 'top' ? iy + t / 2 + 4 : iy + ih - t / 2 + 4);
-  }
-  // components (draggable)
-  for (const k in S.parts) {
-    const p = S.parts[k], q = partRect(p), x = q.x, y = q.y, w = q.w, h = q.h;
-    const active = drag && drag.kind === 'part' && drag.key === k, hot = hover === k;
-    ctx.fillStyle = colors['case']; ctx.globalAlpha = active ? 0.95 : 0.85; ctx.fillRect(x, y, w, h); ctx.globalAlpha = 1;
-    if (active || hot) { ctx.strokeStyle = colors['in']; ctx.lineWidth = 2; ctx.setLineDash(active ? [] : [5, 4]); ctx.strokeRect(x - 2, y - 2, w + 4, h + 4); ctx.setLineDash([]); }
-    // grip dots
-    ctx.fillStyle = colors['surface']; ctx.globalAlpha = 0.6;
-    const gx = x + Math.min(10, w / 2), gy = y + Math.min(10, h / 2);
-    for (let i = 0; i < 2; i++) for (let j = 0; j < 3; j++) { ctx.beginPath(); ctx.arc(gx + i * 4 - 2, gy + j * 4 - 4, 1.2, 0, 7); ctx.fill(); }
-    ctx.globalAlpha = 1;
-    if (p.label && w > 34 && h > 14) { ctx.fillStyle = colors['surface']; ctx.font = '600 12px "IBM Plex Sans", sans-serif'; ctx.textAlign = 'center'; ctx.fillText(p.label, x + w / 2, y + h / 2 + 4); }
-    else if (p.label) { ctx.save(); ctx.translate(x + w / 2 + 4, y + h / 2); ctx.rotate(-Math.PI / 2); ctx.fillStyle = colors['surface']; ctx.font = '600 10px "IBM Plex Sans", sans-serif'; ctx.textAlign = 'center'; ctx.fillText(p.label, 0, 0); ctx.restore(); }
-  }
-  // radiator being dragged: ghost under the pointer + the wall it will snap to
-  if (drag && drag.kind === 'rad' && drag.px != null) {
-    const target = nearestRadWall(drag.px, drag.py), tr = radRect(target);
-    ctx.strokeStyle = colors['in']; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.strokeRect(tr.x, tr.y, tr.w, tr.h); ctx.setLineDash([]);
-    ctx.fillStyle = colors['in']; ctx.globalAlpha = 0.18; ctx.fillRect(tr.x, tr.y, tr.w, tr.h); ctx.globalAlpha = 1;
-    ctx.fillStyle = colors['ink']; ctx.font = '600 12px "IBM Plex Sans", sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('Drop to mount on ' + ZONES[target].label.toLowerCase(), drag.px, drag.py - 14);
-  }
-  // particles
+  if (S.rad.wall !== 'none') drawRadiator();
+  for (const k in S.parts) drawPart(k);
   if (view.particles) {
     ctx.lineWidth = 1.6; ctx.lineCap = 'round';
     for (const p of particles) {
       if (p.px == null) continue;
-      const t = sampleT(T, p.x, p.y), [r, g, b] = heatColor(t);
+      const [r, g, b] = heatColor(sampleT(T, p.x, p.y));
       ctx.strokeStyle = `rgba(${r | 0},${g | 0},${b | 0},0.9)`;
       ctx.beginPath(); ctx.moveTo(ix + p.px * px, iy + p.py * px);
-      const dx = p.x - p.px, dy = p.y - p.py;
-      ctx.lineTo(ix + (p.x + dx * 2) * px, iy + (p.y + dy * 2) * px); ctx.stroke();
+      ctx.lineTo(ix + (p.x + (p.x - p.px) * 2) * px, iy + (p.y + (p.y - p.py) * 2) * px); ctx.stroke();
     }
   }
-  // flow arrows
-  if (view.arrows) {
-    ctx.strokeStyle = colors['ink']; ctx.globalAlpha = 0.55; ctx.lineWidth = 1;
-    for (let y = 2; y < NY; y += 4) for (let x = 2; x < NX; x += 4) {
-      const c = idx(x, y); if (solid[c]) continue;
-      const u = vx[c], v = vy[c], m = Math.hypot(u, v); if (m < 0.02) continue;
-      const L = Math.min(px * 3.5, 4 + m * px * 1.5), ax = ix + (x + 0.5) * px, ay = iy + (y + 0.5) * px, ex = ax + u / m * L, ey = ay + v / m * L;
-      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ex, ey);
-      const an = Math.atan2(v, u);
-      ctx.lineTo(ex - Math.cos(an - 0.5) * 4, ey - Math.sin(an - 0.5) * 4); ctx.moveTo(ex, ey); ctx.lineTo(ex - Math.cos(an + 0.5) * 4, ey - Math.sin(an + 0.5) * 4);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-  }
-  // case walls
+  if (view.arrows) drawArrows();
   ctx.strokeStyle = colors['case']; ctx.lineWidth = 3; ctx.strokeRect(ix, iy, iw, ih);
-  // vents
   ctx.strokeStyle = colors['muted']; ctx.lineWidth = 2;
-  for (const [a, b] of VENTS) for (let y = a; y < b; y += 12) { const yy = iy + y / MM * px; ctx.beginPath(); ctx.moveTo(ix + iw - 2, yy); ctx.lineTo(ix + iw + 10, yy); ctx.stroke(); }
-  // fans
-  for (const f of fans) drawFan(f);
-  // labels
+  for (const [a, b] of VENTS) for (let y = a; y < b; y += 12) { const yy = toY(y); ctx.beginPath(); ctx.moveTo(ix + iw - 2, yy); ctx.lineTo(ix + iw + 10, yy); ctx.stroke(); }
+  for (const f of S.fans) drawFan(f);
+  if (ghost) drawGhost();
   ctx.fillStyle = colors['muted']; ctx.font = '500 12px "IBM Plex Sans", sans-serif'; ctx.textAlign = 'center';
   ctx.fillText('TOP', ix + iw / 2, 14); ctx.fillText('BOTTOM', ix + iw / 2, H - 6);
-  ctx.save(); ctx.translate(12, iy + ih / 2); ctx.rotate(-Math.PI / 2); ctx.fillText('FRONT · SIDE MOUNT', 0, 0); ctx.restore();
+  ctx.save(); ctx.translate(12, iy + ih / 2); ctx.rotate(-Math.PI / 2); ctx.fillText('FRONT · SIDE PANEL', 0, 0); ctx.restore();
   ctx.save(); ctx.translate(W - 8, iy + ih / 2); ctx.rotate(Math.PI / 2); ctx.fillText('REAR · I/O + PCIe', 0, 0); ctx.restore();
 }
 
-function drawFan(f) {
-  const r = fanRect(f), col = f.mode === 'in' ? colors['in'] : f.mode === 'out' ? colors['out'] : colors['off'];
-  ctx.fillStyle = colors['surface']; ctx.fillRect(r.x, r.y, r.w, r.h);
-  ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.strokeRect(r.x, r.y, r.w, r.h);
-  const cx = r.x + r.w / 2, cy = r.y + r.h / 2, R = Math.min(r.w, r.h) / 2 - 2;
-  // spinning blades (as seen edge-on we just show a rotor badge)
-  ctx.save(); ctx.translate(cx, cy);
-  const speed = f.mode === 'off' ? 0 : S.zones[f.zone].speed / 100;
-  ctx.rotate(spin * speed * (f.mode === 'in' ? 1 : -1));
-  ctx.fillStyle = col;
+function drawRadiator() {
+  const r = radRect(), active = drag && drag.kind === 'rad';
+  ctx.save(); ctx.fillStyle = colors['surface']; ctx.globalAlpha = 0.6; ctx.fillRect(r.x, r.y, r.w, r.h); ctx.globalAlpha = 1;
+  ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
+  ctx.strokeStyle = colors['muted']; ctx.lineWidth = 1; ctx.beginPath();
+  for (let k = -r.h; k < r.w + r.h; k += 6) { ctx.moveTo(r.x + k, r.y); ctx.lineTo(r.x + k + r.h, r.y + r.h); }
+  ctx.stroke(); ctx.restore();
+  ctx.strokeStyle = active || hover === 'rad' ? colors['in'] : colors['muted']; ctx.lineWidth = active ? 2.5 : 1.5;
+  ctx.strokeRect(r.x, r.y, r.w, r.h);
+  const [a] = radSpan();
+  for (let i = 0; i < 3; i++) drawFanBar({ wall: S.rad.wall, pos: a + 60 + i * 120, size: 120, mode: S.rad.mode, speed: S.rad.speed }, true);
+  ctx.fillStyle = colors['ink']; ctx.font = '600 11px "IBM Plex Sans", sans-serif'; ctx.textAlign = 'center';
+  if (S.rad.wall === 'left') { ctx.save(); ctx.translate(r.x + r.w / 2 + 4, r.y + r.h / 2); ctx.rotate(-Math.PI / 2); ctx.fillText('H150 RADIATOR', 0, 0); ctx.restore(); }
+  else ctx.fillText('H150 RADIATOR', r.x + r.w / 2, r.y + r.h / 2 + 4);
+}
+
+function drawPart(k) {
+  const p = S.parts[k], q = partRect(p), active = drag && drag.kind === 'part' && drag.key === k;
+  ctx.fillStyle = colors['case']; ctx.globalAlpha = active ? 0.95 : 0.85; ctx.fillRect(q.x, q.y, q.w, q.h); ctx.globalAlpha = 1;
+  if (active || hover === 'part:' + k) { ctx.strokeStyle = colors['in']; ctx.lineWidth = 2; ctx.setLineDash(active ? [] : [5, 4]); ctx.strokeRect(q.x - 2, q.y - 2, q.w + 4, q.h + 4); ctx.setLineDash([]); }
+  ctx.fillStyle = colors['surface']; ctx.globalAlpha = 0.6;
+  const gx = q.x + Math.min(10, q.w / 2), gy = q.y + Math.min(10, q.h / 2);
+  for (let i = 0; i < 2; i++) for (let j = 0; j < 3; j++) { ctx.beginPath(); ctx.arc(gx + i * 4 - 2, gy + j * 4 - 4, 1.2, 0, 7); ctx.fill(); }
+  ctx.globalAlpha = 1; ctx.fillStyle = colors['surface']; ctx.textAlign = 'center';
+  if (q.w > 34 && q.h > 14) { ctx.font = '600 12px "IBM Plex Sans", sans-serif'; ctx.fillText(p.label, q.x + q.w / 2, q.y + q.h / 2 + 4); }
+  else { ctx.save(); ctx.translate(q.x + q.w / 2 + 4, q.y + q.h / 2); ctx.rotate(-Math.PI / 2); ctx.font = '600 10px "IBM Plex Sans", sans-serif'; ctx.fillText(p.label, 0, 0); ctx.restore(); }
+}
+
+function rotor(cx, cy, R, col, speed, dirSign) {
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(spin * speed * dirSign); ctx.fillStyle = col;
   for (let k = 0; k < 5; k++) { ctx.rotate(Math.PI * 2 / 5); ctx.beginPath(); ctx.ellipse(R * 0.45, 0, R * 0.5, R * 0.2, 0.4, 0, 7); ctx.fill(); }
   ctx.restore();
-  // direction arrows along the fan
-  if (f.mode !== 'off') {
-    const [nx, ny] = NORMAL[f.wall], dir = f.mode === 'in' ? 1 : -1;
-    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2;
-    const n = 2, horiz = f.wall === 'top' || f.wall === 'bottom';
-    for (let k = 0; k < n; k++) {
-      const t = (k + 1) / (n + 1);
-      // arrows sit just inside the case: pointing in for intake, out toward the fan for exhaust
-      const ex0 = f.wall === 'left' ? r.x + r.w : f.wall === 'right' ? r.x : 0, ey0 = f.wall === 'top' ? r.y + r.h : f.wall === 'bottom' ? r.y : 0;
-      const bx = horiz ? r.x + r.w * t : ex0, by = horiz ? ey0 : r.y + r.h * t;
-      const p1x = bx + nx * 5, p1y = by + ny * 5, p2x = bx + nx * 20, p2y = by + ny * 20;
-      const [sx, sy, ex, ey] = dir > 0 ? [p1x, p1y, p2x, p2y] : [p2x, p2y, p1x, p1y];
-      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
-      const an = Math.atan2(ey - sy, ex - sx);
-      ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex - Math.cos(an - 0.5) * 6, ey - Math.sin(an - 0.5) * 6); ctx.lineTo(ex - Math.cos(an + 0.5) * 6, ey - Math.sin(an + 0.5) * 6); ctx.closePath(); ctx.fill();
-    }
+}
+function arrow(sx, sy, ex, ey, col, head = 6) {
+  ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+  const an = Math.atan2(ey - sy, ex - sx);
+  ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex - Math.cos(an - 0.5) * head, ey - Math.sin(an - 0.5) * head); ctx.lineTo(ex - Math.cos(an + 0.5) * head, ey - Math.sin(an + 0.5) * head); ctx.closePath(); ctx.fill();
+}
+function drawFanBar(f, isRad) {
+  const r = wallFanRect(f), col = f.mode === 'in' ? colors['in'] : colors['out'];
+  ctx.fillStyle = colors['surface']; ctx.fillRect(r.x, r.y, r.w, r.h);
+  ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.strokeRect(r.x, r.y, r.w, r.h);
+  rotor(r.x + r.w / 2, r.y + r.h / 2, Math.min(r.w, r.h) / 2 - 2, col, f.speed / 100, f.mode === 'in' ? 1 : -1);
+  const [nx, ny] = NORMAL[f.wall], dir = f.mode === 'in' ? 1 : -1, horiz = f.wall === 'top' || f.wall === 'bottom';
+  const ex0 = f.wall === 'left' ? r.x + r.w : f.wall === 'right' ? r.x : 0, ey0 = f.wall === 'top' ? r.y + r.h : f.wall === 'bottom' ? r.y : 0;
+  const offset = isRad ? RAD_T / MM * px : 0;
+  for (const t of [1 / 3, 2 / 3]) {
+    const bx = horiz ? r.x + r.w * t : ex0 + nx * offset, by = horiz ? ey0 + ny * offset : r.y + r.h * t;
+    const p1 = [bx + nx * 5, by + ny * 5], p2 = [bx + nx * 20, by + ny * 20];
+    if (dir > 0) arrow(p1[0], p1[1], p2[0], p2[1], col); else arrow(p2[0], p2[1], p1[0], p1[1], col);
   }
   ctx.fillStyle = colors['ink']; ctx.font = '500 10px "IBM Plex Mono", monospace'; ctx.textAlign = 'center';
-  const lbl = f.size + (f.rad ? ' RAD' : '');
+  const lbl = f.size + (isRad ? ' RAD' : ''), cx = r.x + r.w / 2, cy = r.y + r.h / 2;
   if (f.wall === 'top') ctx.fillText(lbl, cx, r.y - 4);
   else if (f.wall === 'bottom') ctx.fillText(lbl, cx, r.y + r.h + 11);
   else { ctx.save(); ctx.translate(f.wall === 'left' ? r.x - 5 : r.x + r.w + 12, cy); ctx.rotate(-Math.PI / 2); ctx.fillText(lbl, 0, 0); ctx.restore(); }
 }
-
-// ---------------------------------------------------------------- UI
-const $ = id => document.getElementById(id);
-const NEXT = { off: 'in', in: 'out', out: 'off' };
-const MODE_LABEL = { off: 'Off', in: 'Intake', out: 'Exhaust' };
-
-function setFan(zk, i, mode) {
-  const z = S.zones[zk];
-  if (S.aio === zk) z.fans = z.fans.map(() => mode); else z.fans[i] = mode;
-  rebuild();
-}
-function setSize(zk, size) {
-  const z = S.zones[zk]; if (z.size === size) return;
-  if (S.aio === zk && size !== 120) return;
-  const n = ZONES[zk].spans[size].length;
-  z.size = size; z.fans = Array.from({ length: n }, (_, i) => z.fans[i] || z.fans[0] || 'off');
-  rebuild();
-}
-
-function renderZones() {
-  const box = $('zones'); box.innerHTML = '';
-  for (const [zk, Z] of Object.entries(ZONES)) {
-    const z = S.zones[zk], isRad = S.aio === zk;
-    const d = document.createElement('div'); d.className = 'zone';
-    const sizes = Z.sizes.map(sz => `<button type="button" data-size="${sz}" aria-pressed="${z.size === sz}" ${isRad && sz !== 120 ? 'disabled title="The H150 is a 360mm radiator: 3×120 only"' : ''}>${Z.spans[sz].length}×${sz}</button>`).join('');
-    d.innerHTML = `<div class="zhead"><b>${Z.label}${isRad ? ' · radiator' : ''}</b>${Z.sizes.length > 1 ? `<span class="seg" role="group" aria-label="${Z.label} fan size">${sizes}</span>` : '<span class="seg"><button type="button" aria-pressed="true" disabled>1×120</button></span>'}</div>
-      <div class="fans">${z.fans.map((m, i) => `<button type="button" class="fanbtn ${m}" data-i="${i}" aria-label="${Z.label} fan ${i + 1}: ${MODE_LABEL[m]}">${isRad ? 'Rad ' : 'Fan '}${i + 1}: ${MODE_LABEL[m]}</button>`).join('')}</div>
-      <div class="row"><span>Speed</span><input type="range" min="20" max="100" step="5" value="${z.speed}" id="sp-${zk}" aria-label="${Z.label} fan speed"><output>${z.speed}%</output></div>`;
-    d.querySelectorAll('[data-size]').forEach(b => b.addEventListener('click', () => setSize(zk, +b.dataset.size)));
-    d.querySelectorAll('.fanbtn').forEach(b => b.addEventListener('click', () => setFan(zk, +b.dataset.i, NEXT[z.fans[+b.dataset.i]])));
-    const sl = d.querySelector('input[type=range]');
-    sl.addEventListener('input', () => { z.speed = +sl.value; sl.nextElementSibling.textContent = z.speed + '%'; rebuild(); });
-    box.appendChild(d);
+function drawInteriorFan(f) {
+  const r = fanRect(f), col = colors['mix'];
+  ctx.fillStyle = colors['surface']; ctx.globalAlpha = 0.9; ctx.fillRect(r.x, r.y, r.w, r.h); ctx.globalAlpha = 1;
+  ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.strokeRect(r.x, r.y, r.w, r.h);
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+  rotor(cx, cy, Math.min(r.w, r.h) / 2 - 1.5, col, f.speed / 100, 1);
+  const [dx, dy] = FACE[f.face];
+  for (const t of [-0.28, 0.28]) {
+    const ox = dx ? 0 : t * r.w, oy = dy ? 0 : t * r.h;
+    const sx = cx + ox + dx * (r.w / 2 + 3), sy = cy + oy + dy * (r.h / 2 + 3);
+    arrow(sx, sy, sx + dx * 16, sy + dy * 16, col);
   }
+  ctx.fillStyle = colors['ink']; ctx.font = '500 10px "IBM Plex Mono", monospace'; ctx.textAlign = 'center';
+  ctx.fillText(String(f.size), cx, dy > 0 ? r.y - 4 : dy < 0 ? r.y + r.h + 11 : r.y - 4);
+}
+function drawFan(f) {
+  if (f.wall) drawFanBar(f, false); else drawInteriorFan(f);
+  const r = fanRect(f);
+  if (f.id === selectedId || (drag && drag.kind === 'fan' && drag.id === f.id)) {
+    ctx.strokeStyle = colors['ink']; ctx.lineWidth = 2; ctx.setLineDash([4, 3]); ctx.strokeRect(r.x - 4, r.y - 4, r.w + 8, r.h + 8); ctx.setLineDash([]);
+  } else if (hover === 'fan:' + f.id) { ctx.strokeStyle = colors['muted']; ctx.lineWidth = 1; ctx.strokeRect(r.x - 3, r.y - 3, r.w + 6, r.h + 6); }
+}
+function drawGhost() {
+  const g = ghost, r = g.wall ? wallFanRect(g) : boxRect(fanBox(g));
+  ctx.save(); ctx.globalAlpha = 0.75; ctx.setLineDash([5, 4]); ctx.lineWidth = 2;
+  ctx.strokeStyle = g.ok ? (g.wall ? (g.mode === 'in' ? colors['in'] : colors['out']) : colors['mix']) : colors['bad'];
+  ctx.strokeRect(r.x, r.y, r.w, r.h); ctx.restore();
+  ctx.fillStyle = g.ok ? colors['ink'] : colors['bad']; ctx.font = '500 12px "IBM Plex Sans", sans-serif'; ctx.textAlign = 'center';
+  const txt = !g.ok ? 'No room here' : g.wall ? `${WALL_NAME[g.wall]} ${g.mode === 'in' ? 'intake' : 'exhaust'}` : `Interior fan, blowing ${FACE_NAME[g.face]}`;
+  const tx = Math.max(80, Math.min(W - 80, r.x + r.w / 2)), ty = g.wall === 'top' ? r.y + r.h + 30 : r.y - 8;
+  ctx.fillText(txt, tx, Math.max(14, ty));
+}
+function drawArrows() {
+  ctx.strokeStyle = colors['ink']; ctx.globalAlpha = 0.55; ctx.lineWidth = 1;
+  for (let y = 2; y < NY; y += 4) for (let x = 2; x < NX; x += 4) {
+    const c = idx(x, y); if (solid[c]) continue;
+    const u = vx[c], v = vy[c], m = Math.hypot(u, v); if (m < 0.02) continue;
+    const L = Math.min(px * 3.5, 4 + m * px * 1.5), ax = PAD + (x + 0.5) * px, ay = PAD + (y + 0.5) * px, ex = ax + u / m * L, ey = ay + v / m * L;
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ex, ey);
+    const an = Math.atan2(v, u);
+    ctx.lineTo(ex - Math.cos(an - 0.5) * 4, ey - Math.sin(an - 0.5) * 4); ctx.moveTo(ex, ey); ctx.lineTo(ex - Math.cos(an + 0.5) * 4, ey - Math.sin(an + 0.5) * 4);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
 }
 
+// ================================================================ interaction
+let drag = null, hover = null, ghost = null;
+const inside = (q, x, y, pad = 0) => x >= q.x - pad && x <= q.x + q.w + pad && y >= q.y - pad && y <= q.y + q.h + pad;
+function localPos(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+function hitTest(x, y) {
+  for (const f of S.fans.slice().reverse()) if (inside(fanRect(f), x, y, f.wall ? 6 : 3)) return { kind: 'fan', id: f.id };
+  for (const k of ['ram', 'cpu', 'gpu']) if (inside(partRect(S.parts[k]), x, y, 3)) return { kind: 'part', key: k };
+  if (S.rad.wall !== 'none' && inside(radRect(), x, y, 4)) return { kind: 'rad' };
+  return null;
+}
+function movePart(key, x0, y0) {
+  const p = S.parts[key], w = p.x1 - p.x0, h = p.y1 - p.y0;
+  x0 = Math.max(0, Math.min(CASE_W - w, Math.round(x0 / MM) * MM)); y0 = Math.max(0, Math.min(CASE_H - h, Math.round(y0 / MM) * MM));
+  const next = { ...p, x0, x1: x0 + w, y0, y1: y0 + h };
+  for (const k in S.parts) if (k !== key && overlaps(next, S.parts[k])) return false;
+  for (const f of S.fans) if (!f.wall && overlaps(next, fanBox(f))) return false;
+  if (S.rad.wall !== 'none' && overlaps(next, radBox())) return false;
+  if (cell(next.x0) === cell(p.x0) && celly(next.y0) === celly(p.y0)) return false;
+  S.parts[key] = next; return true;
+}
+function moveRad(xmm, ymm) {
+  const d = { top: ymm, bottom: CASE_H - ymm, left: xmm };
+  const wall = Object.keys(d).sort((a, b) => d[a] - d[b])[0];
+  const along = wall === 'left' ? ymm : xmm;
+  const start = Math.max(0, Math.min(wallLen(wall) - RAD_LEN, Math.round((along - RAD_LEN / 2) / 5) * 5));
+  const prev = { ...S.rad };
+  S.rad = { ...S.rad, wall, start };
+  const bx = radBox();
+  const clash = S.fans.some(f => f.wall === wall && spansOverlap(span(f), radSpan())) || S.fans.some(f => !f.wall && overlaps(bx, fanBox(f))) || Object.values(S.parts).some(p => overlaps(bx, p));
+  if (clash || (prev.wall === S.rad.wall && prev.start === S.rad.start)) { S.rad = prev; return false; }
+  return true;
+}
+function moveFan(f, xmm, ymm) {
+  const cand = placementAt(xmm, ymm, f.size, f);
+  const next = { id: f.id, speed: f.speed, ...cand };
+  if (!fanValid(next, f.id)) return false;
+  const same = f.wall === next.wall && (f.wall ? f.pos === next.pos : f.x === next.x && f.y === next.y);
+  if (same) return false;
+  Object.keys(f).forEach(k => delete f[k]); Object.assign(f, next);
+  return true;
+}
+function spawnFan(xmm, ymm) {
+  const cand = placementAt(xmm, ymm, newSize, null);
+  const f = { id: nextId++, speed: 70, ...cand };
+  if (!fanValid(f)) { flashHint(`No room for a ${newSize}mm fan there. Try another spot.`); return; }
+  S.fans.push(f); selectedId = f.id;
+  rebuild();
+  flashHint(`Added: ${fanLabel(f)}. Tap again to add more, or tap “Placing…” to stop.`);
+}
+
+cv.addEventListener('pointerdown', e => {
+  const { x, y } = localPos(e), h = hitTest(x, y);
+  if (!h) {
+    if (placing) { e.preventDefault(); spawnFan(toMM(x), toMM(y)); }
+    else if (selectedId != null) { selectedId = null; updateUI(); }
+    return;
+  }
+  e.preventDefault();
+  cv.setPointerCapture(e.pointerId);
+  if (h.kind === 'fan') {
+    const f = S.fans.find(o => o.id === h.id);
+    drag = { kind: 'fan', id: h.id, offx: f.wall ? 0 : toMM(x) - f.x, offy: f.wall ? 0 : toMM(y) - f.y, moved: false };
+    if (selectedId !== h.id) { selectedId = h.id; updateUI(); }
+  } else if (h.kind === 'part') {
+    const p = S.parts[h.key];
+    drag = { kind: 'part', key: h.key, offx: toMM(x) - p.x0, offy: toMM(y) - p.y0, moved: false };
+  } else drag = { kind: 'rad', moved: false };
+});
+cv.addEventListener('pointermove', e => {
+  const { x, y } = localPos(e);
+  if (!drag) {
+    const h = hitTest(x, y);
+    hover = h ? (h.kind === 'fan' ? 'fan:' + h.id : h.kind === 'part' ? 'part:' + h.key : 'rad') : null;
+    if (placing && !h && e.pointerType === 'mouse') {
+      const cand = placementAt(toMM(x), toMM(y), newSize, null);
+      ghost = { ...cand, ok: fanValid({ id: -1, speed: 70, ...cand }) };
+    } else ghost = null;
+    cv.style.cursor = h ? 'grab' : placing ? 'crosshair' : 'default';
+    return;
+  }
+  cv.style.cursor = 'grabbing';
+  let changed = false;
+  if (drag.kind === 'fan') { const f = S.fans.find(o => o.id === drag.id); if (f) changed = moveFan(f, toMM(x) - drag.offx, toMM(y) - drag.offy); }
+  else if (drag.kind === 'part') changed = movePart(drag.key, toMM(x) - drag.offx, toMM(y) - drag.offy);
+  else changed = moveRad(toMM(x), toMM(y));
+  if (changed) { drag.moved = true; rebuild(true); }
+});
+function endDrag() {
+  if (!drag) return;
+  drag = null; cv.style.cursor = 'default';
+  rebuild();
+}
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+cv.addEventListener('pointerleave', () => { if (!drag) { hover = null; ghost = null; } });
+// a finger that lands on something draggable (or places a fan) shouldn't scroll the page
+cv.addEventListener('touchstart', e => {
+  const t = e.touches[0], r = cv.getBoundingClientRect();
+  if (placing || hitTest(t.clientX - r.left, t.clientY - r.top)) e.preventDefault();
+}, { passive: false });
+cv.addEventListener('touchmove', e => { if (drag) e.preventDefault(); }, { passive: false });
+
+window.addEventListener('keydown', e => {
+  if (e.target.closest && e.target.closest('input, select')) return;
+  if (e.key === 'Escape') { setPlacing(false); selectedId = null; updateUI(); return; }
+  const f = S.fans.find(o => o.id === selectedId);
+  if (!f) return;
+  if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeFan(f.id); return; }
+  const step = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+  if (step) {
+    e.preventDefault();
+    const cx = f.wall ? (f.wall === 'top' || f.wall === 'bottom' ? f.pos : f.wall === 'left' ? 0 : CASE_W) : f.x;
+    const cy = f.wall ? (f.wall === 'left' || f.wall === 'right' ? f.pos : f.wall === 'top' ? 0 : CASE_H) : f.y;
+    if (moveFan(f, cx + step[0] * 10, cy + step[1] * 10)) rebuild();
+  }
+});
+
+// ================================================================ UI
+const $ = id => document.getElementById(id);
+let hintTimer = 0;
+const DEFAULT_HINT = () => placing
+  ? `Tap the case to add a ${newSize}mm fan. Near a panel it mounts on the panel; in open space it becomes an interior fan.`
+  : 'Tap “Place fan”, then tap inside the case. Drag any fan, component or the radiator to move it. Tap a fan to edit it.';
+function flashHint(msg) { $('hint').textContent = msg; clearTimeout(hintTimer); hintTimer = setTimeout(() => { $('hint').textContent = DEFAULT_HINT(); }, 4500); }
+function setPlacing(on) {
+  placing = on; $('placeBtn').setAttribute('aria-pressed', on); $('placeBtn').textContent = on ? 'Placing… tap to stop' : 'Place fan';
+  cv.classList.toggle('placing', on); ghost = null; $('hint').textContent = DEFAULT_HINT();
+}
+function removeFan(id) { S.fans = S.fans.filter(f => f.id !== id); if (selectedId === id) selectedId = null; rebuild(); }
+
+function renderSelected() {
+  const f = S.fans.find(o => o.id === selectedId), bar = $('selbar');
+  bar.hidden = !f; if (!f) return;
+  $('selName').textContent = fanLabel(f);
+  $('selSize').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', +b.dataset.size === f.size));
+  const dirs = f.wall ? [['in', 'Intake'], ['out', 'Exhaust']] : [['rear', '→ Rear'], ['front', '← Front'], ['up', '↑ Up'], ['down', '↓ Down']];
+  const cur = f.wall ? f.mode : f.face;
+  $('selDir').innerHTML = dirs.map(([v, t]) => `<button type="button" data-v="${v}" aria-pressed="${v === cur}">${t}</button>`).join('');
+  $('selDir').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    const g = S.fans.find(o => o.id === selectedId); if (!g) return;
+    if (g.wall) g.mode = b.dataset.v;
+    else { const old = g.face; g.face = b.dataset.v; if (!fanValid(g, g.id)) { g.face = old; flashHint('Not enough room to turn the fan that way here.'); return; } }
+    rebuild();
+  }));
+  $('selSpeed').value = f.speed; $('selSpeedO').textContent = f.speed + '%';
+}
+function renderFanList() {
+  const order = { top: 0, left: 1, bottom: 2, right: 3 };
+  const fans = S.fans.slice().sort((a, b) => (a.wall ? order[a.wall] : 4) - (b.wall ? order[b.wall] : 4) || (a.wall ? a.pos : a.x) - (b.wall ? b.pos : b.x));
+  $('fanlist').innerHTML = fans.length ? fans.map(f => `<li><button type="button" class="pick ${f.wall ? f.mode : 'mix'}${f.id === selectedId ? ' sel' : ''}" data-id="${f.id}">${fanLabel(f)} <span>· ${f.speed}%</span></button><button type="button" class="x" data-del="${f.id}" aria-label="Remove ${fanLabel(f)}">×</button></li>`).join('')
+    : '<li style="color:var(--muted);font-size:13px">No fans yet. Use “Place fan” above the case.</li>';
+  $('fanlist').querySelectorAll('.pick').forEach(b => b.addEventListener('click', () => { selectedId = +b.dataset.id; updateUI(); }));
+  $('fanlist').querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => removeFan(+b.dataset.del)));
+  // what you own: 3×120 + 2×140 (plus the H150's own three fans)
+  const n120 = S.fans.filter(f => f.size === 120).length, n140 = S.fans.filter(f => f.size === 140).length;
+  const need120 = Math.max(0, n120 - 3), need140 = Math.max(0, n140 - 2);
+  $('inv').innerHTML = `Layout uses <b>${n120}×120</b> + <b>${n140}×140</b>${S.rad.wall !== 'none' ? ' + the H150’s 3×120' : ''}. You own 3×120 and 2×140. ` +
+    (need120 || need140 ? `You’d need to buy <b>${[need120 ? need120 + '×120' : '', need140 ? need140 + '×140' : ''].filter(Boolean).join(' and ')}</b>.` : 'No extra fans needed.');
+}
 function updateUI() {
-  renderZones();
-  $('aio').value = S.aio; $('gpuW').value = S.gpuW; $('cpuW').value = S.cpuW;
-  $('gpuWo').textContent = S.gpuW + ' W'; $('cpuWo').textContent = S.cpuW + ' W';
+  renderSelected(); renderFanList();
+  $('aio').value = S.rad.wall;
+  $('radDir').querySelectorAll('button').forEach(b => { b.setAttribute('aria-pressed', b.dataset.mode === S.rad.mode); b.disabled = S.rad.wall === 'none'; });
+  $('radSpeed').value = S.rad.speed; $('radSpeedO').textContent = S.rad.speed + '%'; $('radSpeed').disabled = S.rad.wall === 'none';
+  $('gpuW').value = S.gpuW; $('cpuW').value = S.cpuW; $('gpuWo').textContent = S.gpuW + ' W'; $('cpuWo').textContent = S.cpuW + ' W';
   updateReadouts();
 }
 function updateReadouts() {
-  $('mIn').innerHTML = `${Math.round(metrics.intake)} <small>CFM</small>`;
-  $('mOut').innerHTML = `${Math.round(metrics.exhaust)} <small>CFM</small>`;
-  const big = Math.max(metrics.intake, metrics.exhaust, 1), ratio = metrics.net / big;
-  const pr = $('mPress');
-  if (metrics.intake + metrics.exhaust < 1) { pr.textContent = 'No fans'; pr.style.color = 'var(--bad)'; }
+  const m = metrics;
+  $('mIn').innerHTML = `${Math.round(m.intake)} <small>CFM</small>`;
+  $('mOut').innerHTML = `${Math.round(m.exhaust)} <small>CFM</small>`;
+  $('mInt').textContent = m.interior ? `Interior fans: ${Math.round(m.interior)} CFM` : '';
+  const ratio = m.net / Math.max(m.intake, m.exhaust, 1), pr = $('mPress');
+  if (m.intake + m.exhaust < 1) { pr.textContent = 'No intake or exhaust'; pr.style.color = 'var(--bad)'; }
   else if (ratio > 0.1) { pr.textContent = 'Positive'; pr.style.color = 'var(--good)'; }
   else if (ratio < -0.1) { pr.textContent = 'Negative'; pr.style.color = 'var(--bad)'; }
   else { pr.textContent = 'Balanced'; pr.style.color = 'var(--warn)'; }
   $('pMark').style.left = (50 + Math.max(-1, Math.min(1, ratio)) * 48) + '%';
-  // fan inventory vs. what you own (2×140, 3×120 + the H150's own 3×120)
-  let n120 = 0, n140 = 0;
-  for (const f of fans) if (f.mode !== 'off' && !f.rad) { if (f.size === 120) n120++; else n140++; }
-  const need120 = Math.max(0, n120 - 3), need140 = Math.max(0, n140 - 2);
-  const spare = [];
-  if (n120 < 3) spare.push(`${3 - n120}×120 spare`); if (n140 < 2) spare.push(`${2 - n140}×140 spare`);
-  $('inv').innerHTML = `This layout uses <b>${n120}×120</b> + <b>${n140}×140</b>${S.aio !== 'none' ? ' + the H150’s 3×120' : ''}. ` +
-    (need120 || need140 ? `You’d need to buy <b>${[need120 ? need120 + '×120' : '', need140 ? need140 + '×140' : ''].filter(Boolean).join(' and ')}</b>.` : 'You already own enough fans.') +
-    (spare.length ? ` (${spare.join(', ')})` : '');
   renderNotes();
 }
-
 function renderNotes() {
-  const N = [], m = metrics, z = S.zones;
-  const zoneModes = zk => z[zk].fans.filter(f => f !== 'off');
-  if (m.intake < 1) N.push(['bad', 'No intake fans. Air only gets in through gaps, with no dust filtering.']);
-  if (m.exhaust < 1 && m.intake > 0) N.push(['warn', 'No exhaust fans. Hot air has to leak out through the PCIe slots and panel gaps.']);
-  if (!zoneModes('bottom').includes('in')) N.push(['warn', 'Nothing blows fresh air up into the GPU from below. The 5080 pulls its air from underneath.']);
-  else N.push(['good', 'Bottom intake feeds cool air straight into the GPU.']);
-  if (S.aio !== 'none') {
-    const rm = zoneModes(S.aio)[0];
-    if (rm === 'in') N.push(['warn', `Radiator as intake: the CPU gets the coolest air, but it pre-heats the case air by about ${m.radRise.toFixed(1)} °C.`]);
-    else if (rm === 'out') N.push(['good', 'Radiator as exhaust: CPU heat leaves the case without passing the GPU.']);
-    else N.push(['bad', 'Radiator fans are off. The CPU will overheat under load.']);
-  }
-  for (const zk of ['top', 'side', 'bottom']) { const ms = new Set(zoneModes(zk)); if (ms.size > 1) N.push(['warn', `${ZONES[zk].label} mixes intake and exhaust. Neighbouring fans will loop air between themselves.`]); }
-  if (z.rear.fans[0] === 'in') N.push(['warn', 'Rear intake is unusual. It works against the hot air rising to the top.']);
-  if (zoneModes('top').includes('in') && zoneModes('bottom').includes('out')) N.push(['bad', 'Top intake with bottom exhaust fights convection: hot air wants to rise.']);
-  for (const f of fans) if (f.blocked > 0 && f.mode !== 'off') N.push(['bad', `A component is blocking ${f.cells.length ? 'part of ' : ''}${ZONES[f.zone].label.toLowerCase()} fan ${f.i + 1}.`]);
+  const N = [], m = metrics;
+  const onWall = (w, mode) => S.fans.some(f => f.wall === w && f.mode === mode) || (S.rad.wall === w && S.rad.mode === mode);
+  if (m.intake < 1) N.push(['bad', 'No intake on any panel. Air only gets in through gaps, with no dust filtering.']);
+  if (m.exhaust < 1 && m.intake > 0) N.push(['warn', 'No exhaust. Hot air has to leak out through the PCIe slots and panel gaps.']);
   const g = S.parts.gpu;
+  const feedsGpu = S.fans.some(f => (f.wall === 'bottom' && f.mode === 'in' && f.pos > g.x0 - 40 && f.pos < g.x1 + 40) || (!f.wall && f.face === 'up' && f.y > g.y1 && f.x > g.x0 && f.x < g.x1))
+    || (S.rad.wall === 'bottom' && S.rad.mode === 'in');
+  if (feedsGpu) N.push(['good', 'Air is blowing up into the GPU from below.']);
+  else N.push(['warn', 'Nothing blows air up into the GPU from below. The 5080 pulls its air from underneath.']);
+  if (S.rad.wall !== 'none') {
+    if (S.rad.mode === 'in') N.push(['warn', `Radiator as intake: the CPU gets the coolest air, but it pre-heats the case air by about ${m.radRise.toFixed(1)} °C.`]);
+    else N.push(['good', 'Radiator as exhaust: CPU heat leaves the case without passing the GPU.']);
+  }
+  for (const w of ['top', 'left', 'bottom']) if (onWall(w, 'in') && onWall(w, 'out')) N.push(['warn', `${WALL_NAME[w]} panel mixes intake and exhaust. Neighbouring fans will loop air between themselves.`]);
+  if (onWall('right', 'in')) N.push(['warn', 'Rear-panel intake is unusual. It works against the hot air rising to the top.']);
+  if (onWall('top', 'in') && onWall('bottom', 'out')) N.push(['bad', 'Top intake with bottom exhaust fights convection: hot air wants to rise.']);
+  const interiorN = S.fans.filter(f => !f.wall).length;
+  if (interiorN) N.push(['good', `${interiorN} interior fan${interiorN > 1 ? 's' : ''} moving air inside the case. They speed up circulation but don't bring in fresh air.`]);
+  for (const r of flows) if (!r.interior && r.blocked > 0) N.push(['bad', `A component is blocking ${r.cells.length ? 'part of ' : ''}a ${WALL_NAME[r.wall].toLowerCase()} ${r.rad ? 'radiator fan' : 'fan'}.`]);
   if (CASE_H - g.y1 < 40) N.push(['warn', 'The GPU sits close to the bottom panel, which starves its fans of air.']);
   const ratio = m.net / Math.max(m.intake, m.exhaust, 1);
   if (ratio > 0.1) N.push(['good', 'Positive pressure: the extra air escapes through the gaps, so dust only comes in through the filters.']);
   if (ratio < -0.1) N.push(['bad', 'Negative pressure: unfiltered air (and dust) is pulled in through every gap.']);
   $('notes').innerHTML = N.map(([c, t]) => `<li class="${c}">${t}</li>`).join('');
 }
-
 let tempT = 0;
 function updateTemps(dt) {
   tempT -= dt; if (tempT > 0) return; tempT = 0.4;
-  const room = 22, g = probe(PROBE.gpuIn), c = probe(PROBE.cpu);
-  const fmt = v => `${(room + v).toFixed(1)} <small>°C</small>`;
-  $('mGpu').innerHTML = fmt(g);
-  $('mCpu').innerHTML = fmt(c);
+  const fmt = v => `${(22 + v).toFixed(1)} <small>°C</small>`;
+  $('mGpu').innerHTML = fmt(probe(PROBE.gpuIn)); $('mCpu').innerHTML = fmt(probe(PROBE.cpu));
 }
 
-// ---------------------------------------------------------------- canvas interaction
-// tap a fan to cycle it; drag a component to move it; drag the radiator onto another wall
-let drag = null, hover = null, justDragged = false;
-function partRect(p) {
-  return { x: PAD + cell(p.x0) * px, y: PAD + celly(p.y0) * px, w: (cell(p.x1 - 1) - cell(p.x0) + 1) * px, h: (celly(p.y1 - 1) - celly(p.y0) + 1) * px };
-}
-function radRect(zk) {
-  const z = ZONES[zk], sp = z.spans[120], t = RAD_MM / MM * px;
-  const a = sp[0][0] / MM * px, b = sp[sp.length - 1][1] / MM * px;
-  if (z.wall === 'top') return { x: PAD + a, y: PAD, w: b - a, h: t };
-  if (z.wall === 'bottom') return { x: PAD + a, y: PAD + NY * px - t, w: b - a, h: t };
-  return { x: PAD, y: PAD + a, w: t, h: b - a };
-}
-function nearestRadWall(x, y) {
-  const d = { top: y - PAD, bottom: PAD + NY * px - y, side: x - PAD };
-  return Object.keys(d).sort((a, b) => d[a] - d[b])[0];
-}
-const inside = (q, x, y, pad = 0) => x >= q.x - pad && x <= q.x + q.w + pad && y >= q.y - pad && y <= q.y + q.h + pad;
-function localPos(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
-function hitTest(x, y) {
-  for (const k of ['ram', 'cpu', 'gpu']) if (inside(partRect(S.parts[k]), x, y, 3)) return { kind: 'part', key: k };
-  if (S.aio !== 'none' && inside(radRect(S.aio), x, y)) return { kind: 'rad' };
-  for (const f of fans) if (inside(fanRect(f), x, y, 8)) return { kind: 'fan', fan: f };
-  return null;
-}
-function overlaps(a, b) { return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; }
-function movePart(key, x0mm, y0mm) {
-  const p = S.parts[key], w = p.x1 - p.x0, h = p.y1 - p.y0;
-  x0mm = Math.round(x0mm / MM) * MM; y0mm = Math.round(y0mm / MM) * MM;
-  x0mm = Math.max(0, Math.min(CASE_W - w, x0mm)); y0mm = Math.max(0, Math.min(CASE_H - h, y0mm));
-  const next = { ...p, x0: x0mm, x1: x0mm + w, y0: y0mm, y1: y0mm + h };
-  for (const k in S.parts) if (k !== key && overlaps(next, S.parts[k])) return false;
-  if (cell(next.x0) === cell(p.x0) && celly(next.y0) === celly(p.y0)) return false;
-  S.parts[key] = next;
-  return true;
-}
-cv.addEventListener('pointerdown', e => {
-  const { x, y } = localPos(e), h = hitTest(x, y);
-  if (!h || h.kind === 'fan') return;
-  e.preventDefault();
-  cv.setPointerCapture(e.pointerId);
-  if (h.kind === 'part') {
-    const p = S.parts[h.key];
-    drag = { kind: 'part', key: h.key, offx: (x - PAD) / px * MM - p.x0, offy: (y - PAD) / px * MM - p.y0, moved: false };
-  } else drag = { kind: 'rad', px: x, py: y, moved: false };
-});
-cv.addEventListener('pointermove', e => {
-  const { x, y } = localPos(e);
-  if (!drag) {
-    const h = hitTest(x, y);
-    hover = h && h.kind === 'part' ? h.key : null;
-    cv.style.cursor = !h ? 'default' : h.kind === 'fan' ? 'pointer' : 'grab';
-    return;
-  }
-  cv.style.cursor = 'grabbing';
-  if (drag.kind === 'part') {
-    if (movePart(drag.key, (x - PAD) / px * MM - drag.offx, (y - PAD) / px * MM - drag.offy)) { drag.moved = true; rebuild(true); }
-  } else { drag.px = x; drag.py = y; drag.moved = true; }
-});
-function endDrag() {
-  if (!drag) return;
-  if (drag.kind === 'rad' && drag.moved && drag.px != null) {
-    const target = nearestRadWall(drag.px, drag.py);
-    if (target !== S.aio) S.aio = target;
-  }
-  justDragged = drag.moved;
-  drag = null; cv.style.cursor = 'default';
+document.querySelectorAll('[data-newsize]').forEach(b => b.addEventListener('click', () => {
+  newSize = +b.dataset.newsize;
+  document.querySelectorAll('[data-newsize]').forEach(o => o.setAttribute('aria-pressed', o === b));
+  setPlacing(true);
+}));
+$('placeBtn').addEventListener('click', () => setPlacing(!placing));
+$('selSize').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+  const f = S.fans.find(o => o.id === selectedId); if (!f || f.size === +b.dataset.size) return;
+  const old = { ...f }; f.size = +b.dataset.size;
+  if (f.wall) f.pos = Math.max(f.size / 2, Math.min(wallLen(f.wall) - f.size / 2, f.pos));
+  if (!fanValid(f, f.id)) { Object.assign(f, old); flashHint(`No room for a ${b.dataset.size}mm fan there.`); return; }
   rebuild();
-}
-cv.addEventListener('pointerup', endDrag);
-cv.addEventListener('pointercancel', endDrag);
-cv.addEventListener('pointerleave', () => { if (!drag) hover = null; });
-// on touch screens, a finger that lands on a component drags it instead of scrolling the page
-cv.addEventListener('touchstart', e => {
-  const t = e.touches[0], r = cv.getBoundingClientRect(), h = hitTest(t.clientX - r.left, t.clientY - r.top);
-  if (h && h.kind !== 'fan') e.preventDefault();
-}, { passive: false });
-cv.addEventListener('touchmove', e => { if (drag) e.preventDefault(); }, { passive: false });
-cv.addEventListener('click', e => {
-  if (justDragged) { justDragged = false; return; }
-  const { x, y } = localPos(e), h = hitTest(x, y);
-  if (h && h.kind === 'fan') setFan(h.fan.zone, h.fan.i, NEXT[h.fan.mode]);
+}));
+$('selSpeed').addEventListener('input', e => { const f = S.fans.find(o => o.id === selectedId); if (!f) return; f.speed = +e.target.value; $('selSpeedO').textContent = f.speed + '%'; rebuild(true); });
+$('selSpeed').addEventListener('change', () => rebuild());
+$('selDel').addEventListener('click', () => { if (selectedId != null) removeFan(selectedId); });
+$('aio').addEventListener('change', e => {
+  const wall = e.target.value;
+  if (wall === 'none') { S.rad.wall = 'none'; rebuild(); return; }
+  const prev = { ...S.rad };
+  S.rad.wall = wall; S.rad.start = Math.max(0, Math.min(wallLen(wall) - RAD_LEN, 60));
+  if (Object.values(S.parts).some(p => overlaps(radBox(), p))) { S.rad = prev; flashHint('A component is in the way. Move it first.'); rebuild(); return; }
+  const clash = S.fans.filter(f => (f.wall === wall && spansOverlap(span(f), radSpan())) || (!f.wall && overlaps(radBox(), fanBox(f))));
+  if (clash.length) { S.fans = S.fans.filter(f => !clash.includes(f)); flashHint(`Moved the radiator to the ${WALL_NAME[wall].toLowerCase()} panel and removed ${clash.length} fan${clash.length > 1 ? 's' : ''} that were in its way.`); }
+  rebuild();
 });
-
-$('aio').addEventListener('change', e => { S.aio = e.target.value; rebuild(); });
-$('gpuW').addEventListener('input', e => { S.gpuW = +e.target.value; rebuild(); });
-$('cpuW').addEventListener('input', e => { S.cpuW = +e.target.value; rebuild(); });
-$('preset').addEventListener('change', e => { if (!e.target.value) return; const keep = S.parts; S = PRESETS[e.target.value](); S.parts = keep; T.fill(0); rebuild(); e.target.value = ''; });
-$('resetParts').addEventListener('click', () => { S.parts = DEFAULT_PARTS(); rebuild(); });
+$('radDir').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { S.rad.mode = b.dataset.mode; rebuild(); }));
+$('radSpeed').addEventListener('input', e => { S.rad.speed = +e.target.value; $('radSpeedO').textContent = S.rad.speed + '%'; rebuild(true); });
+$('radSpeed').addEventListener('change', () => rebuild());
+$('gpuW').addEventListener('input', e => { S.gpuW = +e.target.value; $('gpuWo').textContent = S.gpuW + ' W'; rebuild(true); });
+$('cpuW').addEventListener('input', e => { S.cpuW = +e.target.value; $('cpuWo').textContent = S.cpuW + ' W'; rebuild(true); });
+$('gpuW').addEventListener('change', () => rebuild()); $('cpuW').addEventListener('change', () => rebuild());
+$('resetParts').addEventListener('click', () => {
+  const keep = S.parts; S.parts = DEFAULT_PARTS();
+  const bad = Object.values(S.parts).some(p => S.fans.some(f => !f.wall && overlaps(p, fanBox(f))) || (S.rad.wall !== 'none' && overlaps(p, radBox())));
+  if (bad) { S.parts = keep; flashHint('A fan or the radiator sits where a component goes back. Move it first.'); return; }
+  rebuild();
+});
+$('restore').addEventListener('click', () => { const keep = S.parts; S = fresh(); S.parts = keep; selectedId = null; T.fill(0); rebuild(); flashHint('Loaded the recommended layout. Everything is still movable.'); });
+$('clearFans').addEventListener('click', () => { S.fans = []; selectedId = null; rebuild(); setPlacing(true); });
 for (const [id, key] of [['tParticles', 'particles'], ['tHeat', 'heat'], ['tArrows', 'arrows'], ['tPause', 'paused']]) {
   $(id).addEventListener('click', () => { view[key] = !view[key]; $(id).setAttribute('aria-pressed', view[key]); });
 }
 
-// ---------------------------------------------------------------- loop
+// ================================================================ loop
 let last = performance.now(), colorT = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   colorT -= dt; if (colorT <= 0) { colorT = 1; readColors(); }
-  if (!view.paused) {
-    for (let k = 0; k < 3; k++) stepHeat(dt);
-    stepParticles(dt);
-    spin += dt * 14;
-    updateTemps(dt);
-  }
+  if (!view.paused) { for (let k = 0; k < 3; k++) stepHeat(dt); stepParticles(dt); spin += dt * 14; updateTemps(dt); }
   draw();
   requestAnimationFrame(frame);
 }
 window.addEventListener('resize', resize);
 readColors(); resize(); rebuild();
-// warm the heat field so the first view is already near steady state
-for (let k = 0; k < 900; k++) stepHeat(1 / 60);
+for (let k = 0; k < 900; k++) stepHeat(1 / 60); // start near steady state
 requestAnimationFrame(frame);
-window.__bench = { get S() { return S; }, partRect: k => partRect(S.parts[k]), radRect: () => radRect(S.aio), fans: () => fans, metrics: () => metrics, probe: () => ({ gpu: probe(PROBE.gpuIn), cpu: probe(PROBE.cpu), all: probe(PROBE.all) }), load: k => { S = PRESETS[k](); T.fill(0); rebuild(); for (let i = 0; i < 1500; i++) stepHeat(1 / 60); } };
+window.__bench = {
+  get S() { return S; }, metrics: () => metrics, toPx: (xmm, ymm) => ({ x: toX(xmm), y: toY(ymm) }),
+  fanRect: id => fanRect(S.fans.find(f => f.id === id)), partRect: k => partRect(S.parts[k]), radRect: () => radRect(),
+  probe: () => ({ gpu: probe(PROBE.gpuIn), cpu: probe(PROBE.cpu), all: probe(PROBE.all) }), settle: () => { for (let i = 0; i < 1500; i++) stepHeat(1 / 60); },
+};
 </script>
 </body></html>
